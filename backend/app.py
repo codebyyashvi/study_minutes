@@ -23,3 +23,7 @@ def protected(user = Depends(get_current_user)):
         "message": "You are authenticated",
         "email": user["email"]
     }
+
+@app.get("/")
+def root():
+    return {"message": "StudyMinutes Backend is running 🚀"}
