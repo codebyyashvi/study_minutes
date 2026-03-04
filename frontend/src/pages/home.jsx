@@ -19,7 +19,7 @@ const Home = () => {
 
   const handleSuccess = async (credentialResponse) => {
     try {
-      const res = await axios.post("http://127.0.0.1:8000/auth/google", {
+      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}auth/google`, {
         token: credentialResponse.credential,
       });
 
