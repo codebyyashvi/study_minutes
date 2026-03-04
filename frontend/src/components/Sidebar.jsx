@@ -1,8 +1,16 @@
-import { FiPlus, FiSettings } from "react-icons/fi";
+import { FiPlus, FiSettings, FiX } from "react-icons/fi";
 import { FiMoreVertical, FiTrash2, FiEdit2, FiBookmark } from "react-icons/fi";
 import { useState } from "react";
 
-const Sidebar = ({ chats, setChats, setMessages, user, onRequireLogin }) => {
+const Sidebar = ({
+  chats,
+  setChats,
+  setMessages,
+  user,
+  onRequireLogin,
+  onClose,
+  isMobile = false,
+}) => {
   const ensureAuth = () => {
     if (!user) {
       if (onRequireLogin) onRequireLogin();
@@ -23,6 +31,8 @@ const Sidebar = ({ chats, setChats, setMessages, user, onRequireLogin }) => {
     setMessages([
       { role: "bot", content: "Hi 👋 Upload notes and ask me anything!" },
     ]);
+
+    if (isMobile && onClose) onClose();
   };
   const [activeMenu, setActiveMenu] = useState(null);
 
@@ -52,12 +62,23 @@ const Sidebar = ({ chats, setChats, setMessages, user, onRequireLogin }) => {
   };
 
   return (
-    <div className="w-72 h-screen bg-slate-950 text-slate-200 flex flex-col px-4 py-6 border-r border-slate-800/60">
+    <div className="w-full h-full bg-slate-950 text-slate-200 flex flex-col px-4 py-6 border-r border-slate-800/60">
       {/* Logo */}
-      <div className="mb-8 px-2">
+      <div className="mb-8 px-2 flex items-start justify-between gap-3">
+        <div>
         <p className="text-xs text-slate-500 mt-1 font-medium">
           AI Study Assistant
         </p>
+        </div>
+        {isMobile && (
+          <button
+            onClick={onClose}
+            className="md:hidden p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+            aria-label="Close sidebar"
+          >
+            <FiX size={18} />
+          </button>
+        )}
       </div>
 
       {/* New Chat Button */}
