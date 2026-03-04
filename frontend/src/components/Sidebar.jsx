@@ -1,10 +1,19 @@
 import { FiPlus, FiSettings } from "react-icons/fi";
-import { UserCircle } from "lucide-react";
 import { FiMoreVertical, FiTrash2, FiEdit2, FiBookmark } from "react-icons/fi";
 import { useState } from "react";
 
-const Sidebar = ({ chats, setChats, setMessages }) => {
+const Sidebar = ({ chats, setChats, setMessages, user, onRequireLogin }) => {
+  const ensureAuth = () => {
+    if (!user) {
+      if (onRequireLogin) onRequireLogin();
+      return false;
+    }
+    return true;
+  };
+
   const handleNewChat = () => {
+    if (!ensureAuth()) return;
+
     const newChat = {
       id: Date.now(),
       title: "New Chat",
@@ -18,11 +27,13 @@ const Sidebar = ({ chats, setChats, setMessages }) => {
   const [activeMenu, setActiveMenu] = useState(null);
 
   const handleDelete = (id) => {
+    if (!ensureAuth()) return;
     setChats(chats.filter((chat) => chat.id !== id));
     setActiveMenu(null);
   };
 
   const handleRename = (id) => {
+    if (!ensureAuth()) return;
     const newName = prompt("Enter new chat name:");
     if (!newName) return;
 
@@ -35,6 +46,7 @@ const Sidebar = ({ chats, setChats, setMessages }) => {
   };
 
   const handleSave = (id) => {
+    if (!ensureAuth()) return;
     alert("Chat saved!");
     setActiveMenu(null);
   };
@@ -69,9 +81,10 @@ const Sidebar = ({ chats, setChats, setMessages }) => {
 
             {/* 3 Dot Button */}
             <button
-              onClick={() =>
-                setActiveMenu(activeMenu === chat.id ? null : chat.id)
-              }
+              onClick={() => {
+                if (!ensureAuth()) return;
+                setActiveMenu(activeMenu === chat.id ? null : chat.id);
+              }}
               className="opacity-100 p-1 rounded-md hover:bg-slate-700/60"
             >
               <FiMoreVertical size={16} />
@@ -112,7 +125,10 @@ const Sidebar = ({ chats, setChats, setMessages }) => {
       <div className="mt-6">
         {/* Settings Section with Top & Bottom Border */}
         <div className="border-t border-b border-slate-800/60 py-4">
-          <button className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors">
+          <button
+            onClick={ensureAuth}
+            className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+          >
             <FiSettings size={16} /> Settings
           </button>
         </div>
