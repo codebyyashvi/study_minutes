@@ -7,3 +7,4 @@ python-jose
 google-auth
 requests
 bcrypt
+openai
