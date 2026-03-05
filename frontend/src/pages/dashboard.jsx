@@ -1,9 +1,40 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Plus, Mic, FileText, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [totalNotes, setTotalNotes] = useState(0);
+
+  useEffect(() => {
+    const fetchTotalNotes = async () => {
+      try {
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+          setTotalNotes(0);
+          return;
+        }
+
+        const res = await axios.get(
+          `${import.meta.env.VITE_BACKEND_URL}/my-notes/count`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        setTotalNotes(Number(res.data?.total_notes) || 0);
+      } catch (error) {
+        console.error("Failed to fetch notes:", error);
+        setTotalNotes(0);
+      }
+    };
+
+    fetchTotalNotes();
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
@@ -66,7 +97,7 @@ const Dashboard = () => {
 
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 hover:border-blue-500 transition">
             <p className="text-slate-400 text-sm">Total Notes</p>
-            <h2 className="text-xl sm:text-2xl font-semibold mt-2">24</h2>
+            <h2 className="text-xl sm:text-2xl font-semibold mt-2">{totalNotes}</h2>
           </div>
 
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 hover:border-blue-500 transition">

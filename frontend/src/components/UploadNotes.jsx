@@ -15,6 +15,7 @@ const UploadNotes = ({ onClose, onUploadSuccess }) => {
 
       await axios.post(
         `${import.meta.env.VITE_BACKEND_URL}/upload-note`,
+        // "https://127.0.0.1:8000/upload-note",
         {
           content: content,
         },

@@ -20,6 +20,16 @@ app.add_middleware(
 # Include auth routes
 app.include_router(auth_router)
 
+
+def notes_filter_for_user(user):
+    # Support both current and older note records for the same account.
+    return {
+        "$or": [
+            {"user_id": str(user["_id"])},
+            {"email": user["email"]},
+        ]
+    }
+
 # Example protected route
 @app.get("/protected")
 def protected(user = Depends(get_current_user)):
@@ -60,9 +70,15 @@ async def upload_note(data: dict, user=Depends(get_current_user)):
 @app.get("/my-notes")
 async def get_notes(user=Depends(get_current_user)):
 
-    notes = list(notes_collection.find({"user_id": str(user["_id"])}))
+    notes = list(notes_collection.find(notes_filter_for_user(user)))
 
     for note in notes:
         note["_id"] = str(note["_id"])
 
     return notes
+
+
+@app.get("/my-notes/count")
+async def get_notes_count(user=Depends(get_current_user)):
+    total_notes = notes_collection.count_documents(notes_filter_for_user(user))
+    return {"total_notes": total_notes}
