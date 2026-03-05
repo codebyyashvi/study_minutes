@@ -22,7 +22,9 @@ const Home = () => {
       const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}auth/google`, {
         token: credentialResponse.credential,
       });
-
+      // const res = await axios.post(`http://127.0.0.1:8000/auth/google`, {
+      //   token: credentialResponse.credential,
+      // });
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
       window.location.reload();

@@ -1,6 +1,10 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from auth import router as auth_router, get_current_user
+from db import notes_collection
+from models import Note
+from datetime import datetime
+from ai_formatter import format_notes
 
 app = FastAPI()
 
@@ -27,3 +31,38 @@ def protected(user = Depends(get_current_user)):
 @app.get("/")
 def root():
     return {"message": "StudyMinutes Backend is running 🚀"}
+
+# Upload note
+@app.post("/upload-note")
+async def upload_note(data: dict, user=Depends(get_current_user)):
+
+    raw_text = data["content"]
+
+    # AI formats note
+    structured_note = format_notes(raw_text)
+
+    note_data = {
+        "user_id": str(user["_id"]),   # taken from auth token
+        "email": user["email"],
+        "raw_note": raw_text,
+        "structured_note": structured_note,
+        "created_at": datetime.utcnow()
+    }
+
+    notes_collection.insert_one(note_data)
+
+    return {
+        "message": "Note saved with AI formatting",
+        "note": structured_note
+    }
+
+# Get logged-in user's notes
+@app.get("/my-notes")
+async def get_notes(user=Depends(get_current_user)):
+
+    notes = list(notes_collection.find({"user_id": str(user["_id"])}))
+
+    for note in notes:
+        note["_id"] = str(note["_id"])
+
+    return notes

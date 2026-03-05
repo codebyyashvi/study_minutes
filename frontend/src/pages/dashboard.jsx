@@ -1,12 +1,23 @@
 import React from "react";
-import { Plus, Mic, FileText } from "lucide-react";
+import { Plus, Mic, FileText, ArrowLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen bg-slate-900 text-white">
       
       {/* Main Content */}
       <div className="p-4 sm:p-6 md:p-8">
+
+        <button
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm"
+        >
+          <ArrowLeft size={16} />
+          Back
+        </button>
 
         {/* Welcome Section */}
         <div className="mb-8 sm:mb-10">

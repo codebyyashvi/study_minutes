@@ -1,11 +1,24 @@
-import { useState } from "react";
-import { FiPlus, FiMic, FiFile, FiMenu } from "react-icons/fi";
+import { useEffect, useState } from "react";
+import { FiPlus, FiMic, FiFile, FiMenu, FiX } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
+import UploadNotes from "./UploadNotes";
 
 const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }) => {
   const [input, setInput] = useState("");
   const [showProfile, setShowProfile] = useState(false);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [uploadToast, setUploadToast] = useState({ visible: false, id: 0 });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!uploadToast.visible) return;
+
+    const timeoutId = setTimeout(() => {
+      setUploadToast((prev) => ({ ...prev, visible: false }));
+    }, 10000);
+
+    return () => clearTimeout(timeoutId);
+  }, [uploadToast.id, uploadToast.visible]);
 
   const promptLogin = () => {
     if (onRequireLogin) onRequireLogin();
@@ -36,7 +49,7 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0f172a] text-white">
+    <div className="flex min-h-screen flex-col bg-[#0f172a] text-white">
 
       {/* Top Navbar */}
       <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-800 relative gap-3">
@@ -53,7 +66,13 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
         {/* Upload Buttons */}
         <div className="flex gap-2 sm:gap-3 mr-3 sm:mr-6 overflow-x-auto">
           <button
-            onClick={handleAuthRequiredClick}
+            onClick={() => {
+              if (!user) {
+                promptLogin();
+              } else {
+                setShowNotesModal(true);
+              }
+            }}
             className="bg-[#1e293b] hover:bg-[#334155] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 whitespace-nowrap"
           >
             <FiPlus /> <span className="hidden sm:inline">Notes</span>
@@ -180,6 +199,28 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
           </button>
         </div>
       </div>
+      {/* NOTES MODAL */}
+      {showNotesModal && (
+        <UploadNotes
+          onClose={() => setShowNotesModal(false)}
+          onUploadSuccess={() =>
+            setUploadToast({ visible: true, id: Date.now() })
+          }
+        />
+      )}
+
+      {uploadToast.visible && (
+        <div className="fixed bottom-4 right-4 z-[60] flex items-start gap-3 rounded-lg bg-[#1e293b] border border-gray-700 px-4 py-3 text-sm text-white shadow-lg">
+          <span>Notes uploaded successfully ✅</span>
+          <button
+            onClick={() => setUploadToast((prev) => ({ ...prev, visible: false }))}
+            className="text-gray-300 hover:text-white"
+            aria-label="Close notification"
+          >
+            <FiX size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
