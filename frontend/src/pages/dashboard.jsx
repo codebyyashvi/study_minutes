@@ -12,7 +12,7 @@ const Dashboard = () => {
     const fetchTotalNotes = async () => {
       try {
         const token = localStorage.getItem("token");
-
+        console.log(token);
         if (!token) {
           setTotalNotes(0);
           return;
