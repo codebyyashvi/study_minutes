@@ -6,6 +6,7 @@ import axios from "axios";
 const Dashboard = () => {
   const navigate = useNavigate();
   const [totalNotes, setTotalNotes] = useState(0);
+  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
 
   useEffect(() => {
     const fetchTotalNotes = async () => {
@@ -18,7 +19,8 @@ const Dashboard = () => {
         }
 
         const res = await axios.get(
-          `${import.meta.env.VITE_BACKEND_URL}/my-notes/count`,
+          // `${import.meta.env.VITE_BACKEND_URL}/my-notes/count`,.
+          `${API_BASE_URL}/my-notes/count`,
           {
             headers: {
               Authorization: `Bearer ${token}`,

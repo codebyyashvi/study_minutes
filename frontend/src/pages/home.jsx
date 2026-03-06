@@ -5,6 +5,7 @@ import { GoogleLogin } from "@react-oauth/google";
 import axios from "axios";
 
 const Home = () => {
+  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
   const [messages, setMessages] = useState([
     { role: "bot", content: "Hi 👋 Upload notes and ask me anything!" },
   ]);
@@ -19,12 +20,9 @@ const Home = () => {
 
   const handleSuccess = async (credentialResponse) => {
     try {
-      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}auth/google`, {
+      const res = await axios.post(`${API_BASE_URL}/auth/google`, {
         token: credentialResponse.credential,
       });
-      // const res = await axios.post(`http://127.0.0.1:8000/auth/google`, {
-      //   token: credentialResponse.credential,
-      // });
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
       window.location.reload();
