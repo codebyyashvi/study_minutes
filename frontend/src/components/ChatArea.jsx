@@ -1,13 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FiPlus, FiMic, FiFile, FiMenu, FiX, FiGrid } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import UploadNotes from "./UploadNotes";
 
 const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }) => {
   const [input, setInput] = useState("");
   const [showProfile, setShowProfile] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
-  const [uploadToast, setUploadToast] = useState({ visible: false, id: 0 });
+  const [uploadToast, setUploadToast] = useState({ visible: false, id: 0, message: "" });
+  const [isAudioUploading, setIsAudioUploading] = useState(false);
+  const audioInputRef = useRef(null);
+  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -48,11 +52,65 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
     setInput("");
   };
 
+  const showToast = (message) => {
+    setUploadToast({ visible: true, id: Date.now(), message });
+  };
+
+  const triggerAudioPicker = () => {
+    if (!user) {
+      promptLogin();
+      return;
+    }
+
+    audioInputRef.current?.click();
+  };
+
+  const handleAudioUpload = async (event) => {
+    const selectedFile = event.target.files?.[0];
+    if (!selectedFile) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      promptLogin();
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    try {
+      setIsAudioUploading(true);
+
+      await axios.post(`${API_BASE_URL}/upload-audio`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      showToast("Audio uploaded and converted to notes ✅");
+    } catch (error) {
+      console.error("Audio upload failed:", error);
+      showToast("Audio upload failed. Please try again.");
+    } finally {
+      setIsAudioUploading(false);
+      event.target.value = "";
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-[#0f172a] text-white">
 
       {/* Top Navbar */}
       <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-800 relative gap-3">
+        <input
+          ref={audioInputRef}
+          type="file"
+          accept="audio/*"
+          onChange={handleAudioUpload}
+          className="hidden"
+        />
+
         <div className="flex items-center gap-2">
           <button
             onClick={onOpenSidebar}
@@ -88,10 +146,11 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
             <FiPlus /> <span className="hidden sm:inline">Notes</span>
           </button>
           <button
-            onClick={handleAuthRequiredClick}
-            className="bg-[#1e293b] hover:bg-[#334155] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 whitespace-nowrap"
+            onClick={triggerAudioPicker}
+            disabled={isAudioUploading}
+            className="bg-[#1e293b] hover:bg-[#334155] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-70"
           >
-            <FiMic /> <span className="hidden sm:inline">Audio</span>
+            <FiMic /> <span className="hidden sm:inline">{isAudioUploading ? "Uploading..." : "Audio"}</span>
           </button>
           <button
             onClick={handleAuthRequiredClick}
@@ -207,14 +266,14 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
         <UploadNotes
           onClose={() => setShowNotesModal(false)}
           onUploadSuccess={() =>
-            setUploadToast({ visible: true, id: Date.now() })
+            showToast("Notes uploaded successfully ✅")
           }
         />
       )}
 
       {uploadToast.visible && (
         <div className="fixed bottom-4 right-4 z-[60] flex items-start gap-3 rounded-lg bg-[#1e293b] border border-gray-700 px-4 py-3 text-sm text-white shadow-lg">
-          <span>Notes uploaded successfully ✅</span>
+          <span>{uploadToast.message}</span>
           <button
             onClick={() => setUploadToast((prev) => ({ ...prev, visible: false }))}
             className="text-gray-300 hover:text-white"

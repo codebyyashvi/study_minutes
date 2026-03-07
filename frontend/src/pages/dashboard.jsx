@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Plus, Mic, FileText, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -9,7 +9,9 @@ const Dashboard = () => {
   const [totalNotes, setTotalNotes] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
-  const [uploadToast, setUploadToast] = useState({ visible: false, id: 0 });
+  const [uploadToast, setUploadToast] = useState({ visible: false, id: 0, message: "" });
+  const [isAudioUploading, setIsAudioUploading] = useState(false);
+  const audioInputRef = useRef(null);
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
   const user = JSON.parse(localStorage.getItem("user") || "null");
   const displayName = user?.name?.trim();
@@ -51,6 +53,54 @@ const Dashboard = () => {
 
     fetchTotalNotes();
   }, []);
+
+  const showToast = (message) => {
+    setUploadToast({ visible: true, id: Date.now(), message });
+  };
+
+  const triggerAudioPicker = () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      navigate("/auth");
+      return;
+    }
+
+    audioInputRef.current?.click();
+  };
+
+  const handleAudioUpload = async (event) => {
+    const selectedFile = event.target.files?.[0];
+    if (!selectedFile) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      navigate("/auth");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    try {
+      setIsAudioUploading(true);
+
+      await axios.post(`${API_BASE_URL}/upload-audio`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      setTotalNotes((prev) => prev + 1);
+      showToast("Audio uploaded and converted to notes ✅");
+    } catch (error) {
+      console.error("Failed to upload audio:", error);
+      showToast("Audio upload failed. Please try again.");
+    } finally {
+      setIsAudioUploading(false);
+      event.target.value = "";
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
@@ -119,6 +169,14 @@ const Dashboard = () => {
         {/* Quick Actions */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-10 sm:mb-12">
 
+          <input
+            ref={audioInputRef}
+            type="file"
+            accept="audio/*"
+            onChange={handleAudioUpload}
+            className="hidden"
+          />
+
           {/* Add Note */}
           <button
             onClick={() => setShowNotesModal(true)}
@@ -132,9 +190,15 @@ const Dashboard = () => {
           </button>
 
           {/* Upload Audio */}
-          <button className="bg-slate-800 hover:bg-slate-700 transition rounded-2xl p-5 sm:p-6 text-left border border-slate-700 hover:border-blue-500 group">
+          <button
+            onClick={triggerAudioPicker}
+            disabled={isAudioUploading}
+            className="bg-slate-800 hover:bg-slate-700 transition rounded-2xl p-5 sm:p-6 text-left border border-slate-700 hover:border-blue-500 group disabled:cursor-not-allowed disabled:opacity-70"
+          >
             <Mic className="text-blue-500 group-hover:scale-110 transition mb-4" size={28} />
-            <h2 className="text-lg font-medium">Upload Audio</h2>
+            <h2 className="text-lg font-medium">
+              {isAudioUploading ? "Uploading Audio..." : "Upload Audio"}
+            </h2>
             <p className="text-slate-400 text-sm mt-1">
               Convert lecture recordings into structured notes
             </p>
@@ -183,7 +247,7 @@ const Dashboard = () => {
           <UploadNotes
             onClose={() => setShowNotesModal(false)}
             onUploadSuccess={() => {
-              setUploadToast({ visible: true, id: Date.now() });
+              showToast("Notes uploaded successfully ✅");
               setTotalNotes((prev) => prev + 1);
             }}
           />
@@ -191,7 +255,7 @@ const Dashboard = () => {
 
         {uploadToast.visible && (
           <div className="fixed bottom-4 right-4 z-[60] rounded-lg bg-[#1e293b] border border-gray-700 px-4 py-3 text-sm text-white shadow-lg">
-            Notes uploaded successfully ✅
+            {uploadToast.message}
           </div>
         )}
 
