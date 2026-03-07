@@ -77,8 +77,8 @@ async def get_notes(user=Depends(get_current_user)):
 
     return notes
 
-
 @app.get("/my-notes/count")
 async def get_notes_count(user=Depends(get_current_user)):
     total_notes = notes_collection.count_documents(notes_filter_for_user(user))
     return {"total_notes": total_notes}
+

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FiPlus, FiMic, FiFile, FiMenu, FiX } from "react-icons/fi";
+import { FiPlus, FiMic, FiFile, FiMenu, FiX, FiGrid } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import UploadNotes from "./UploadNotes";
 
@@ -53,13 +53,23 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
 
       {/* Top Navbar */}
       <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-800 relative gap-3">
-        <button
-          onClick={onOpenSidebar}
-          className="md:hidden p-2 rounded-lg bg-[#1e293b] hover:bg-[#334155]"
-          aria-label="Open sidebar"
-        >
-          <FiMenu size={18} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onOpenSidebar}
+            className="md:hidden p-2 rounded-lg bg-[#1e293b] hover:bg-[#334155]"
+            aria-label="Open sidebar"
+          >
+            <FiMenu size={18} />
+          </button>
+
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1e293b] hover:bg-[#334155] text-xs sm:text-sm whitespace-nowrap"
+          >
+            <FiGrid size={16} />
+            Dashboard
+          </button>
+        </div>
 
         <div className="flex items-center justify-end flex-1 min-w-0">
 
@@ -118,13 +128,6 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
                   </div>
 
                   <button
-                    onClick={() => navigate("/dashboard")}
-                    className="block w-full text-left px-4 py-2 hover:bg-[#334155]"
-                  >
-                    Dashboard
-                  </button>
-
-                  <button
                     className="block w-full text-left px-4 py-2 hover:bg-[#334155]"
                   >
                     Profile
@@ -134,7 +137,7 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
                     onClick={() => {
                       localStorage.removeItem("token");
                       localStorage.removeItem("user");
-                      window.location.reload();
+                      navigate("/", { replace: true });
                     }}
                     className="block w-full text-left px-4 py-2 text-red-400 hover:bg-[#334155]"
                   >

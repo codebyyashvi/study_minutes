@@ -15,7 +15,8 @@ const UploadNotes = ({ onClose, onUploadSuccess }) => {
       const token = localStorage.getItem("token");
 
       await axios.post(
-        `${API_BASE_URL}/upload-note`,
+        // `${API_BASE_URL}/upload-note`,
+        "http://127.0.0.1:8000/upload-note",
         {
           content: content,
         },
