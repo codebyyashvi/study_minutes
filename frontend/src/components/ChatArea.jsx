@@ -12,6 +12,7 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
   const [isAudioUploading, setIsAudioUploading] = useState(false);
   const audioInputRef = useRef(null);
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
+  // const API_BASE_URL = "http://127.0.0.1:8000";
   const navigate = useNavigate();
 
   useEffect(() => {

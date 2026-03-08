@@ -9,3 +9,5 @@ requests
 bcrypt
 openai
 python-multipart
+SpeechRecognition
+pydub

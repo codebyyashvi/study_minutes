@@ -7,7 +7,8 @@ from datetime import datetime
 from ai_formatter import format_notes
 import shutil
 import os
-from audio_transcriber import transcribe_audio
+from audio_transcriber import transcribe_audio_chunks
+import tempfile
 
 app = FastAPI()
 
@@ -88,34 +89,31 @@ async def get_notes_count(user=Depends(get_current_user)):
 @app.post("/upload-audio")
 async def upload_audio(file: UploadFile = File(...), user=Depends(get_current_user)):
 
-    file_path = f"temp_{file.filename}"
-
-    # Save uploaded audio
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    with tempfile.NamedTemporaryFile(delete=False) as temp:
+        temp.write(await file.read())
+        temp_path = temp.name
 
     try:
-        # Convert audio -> text
-        raw_text = transcribe_audio(file_path)
+        # Speech -> text
+        raw_text = transcribe_audio_chunks(temp_path)
     finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
-    # Format notes using your LLM
-    structured_note = format_notes(raw_text)
+    # Text -> structured notes
+    structured_notes = format_notes(raw_text)
 
     note_data = {
         "user_id": str(user["_id"]),
         "email": user["email"],
         "raw_note": raw_text,
-        "structured_note": structured_note,
+        "structured_note": structured_notes,
         "created_at": datetime.utcnow()
     }
 
     notes_collection.insert_one(note_data)
 
     return {
-        "message": "Audio converted and notes saved",
-        "transcription": raw_text,
-        "structured_note": structured_note
+        "message": "Audio converted successfully",
+        "note": structured_notes
     }

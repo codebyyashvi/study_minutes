@@ -25,6 +25,7 @@ const parseStructuredNote = (structuredNote) => {
 const NotesPage = () => {
   const navigate = useNavigate();
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
+  // const API_BASE_URL = "http://127.0.0.1:8000";
 
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -13,6 +13,7 @@ const Dashboard = () => {
   const [isAudioUploading, setIsAudioUploading] = useState(false);
   const audioInputRef = useRef(null);
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
+  // const API_BASE_URL = "http://127.0.0.1:8000";
   const user = JSON.parse(localStorage.getItem("user") || "null");
   const displayName = user?.name?.trim();
 
