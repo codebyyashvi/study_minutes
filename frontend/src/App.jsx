@@ -3,6 +3,7 @@ import Home from "./pages/home";
 import Dashboard from "./pages/dashboard";
 import AuthPage from "./pages/auth";
 import NotesPage from "./pages/notes";
+import SubjectPage from "./pages/subject";
 
 const isAuthenticated = () => Boolean(localStorage.getItem("token"));
 
@@ -47,6 +48,14 @@ function App() {
           element={
             <ProtectedRoute>
               <NotesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/subject"
+          element={
+            <ProtectedRoute>
+              <SubjectPage />
             </ProtectedRoute>
           }
         />

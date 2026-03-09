@@ -9,6 +9,8 @@ import shutil
 import os
 from audio_transcriber import transcribe_audio_chunks
 import tempfile
+import re
+from collections import Counter
 
 app = FastAPI()
 
@@ -33,6 +35,21 @@ def notes_filter_for_user(user):
             {"email": user["email"]},
         ]
     }
+
+
+def extract_subject(note_doc):
+    """Extract subject line from structured/raw note text."""
+    note_text = (note_doc.get("structured_note") or note_doc.get("raw_note") or "")
+    if not isinstance(note_text, str):
+        return ""
+
+    # Remove bold markdown before matching `Subject:` lines.
+    clean_text = note_text.replace("**", "")
+    match = re.search(r"Subject:\s*([^\n]+)", clean_text, flags=re.IGNORECASE)
+    if not match:
+        return ""
+
+    return match.group(1).strip()
 
 # Example protected route
 @app.get("/protected")
@@ -117,3 +134,31 @@ async def upload_audio(file: UploadFile = File(...), user=Depends(get_current_us
         "message": "Audio converted successfully",
         "note": structured_notes
     }
+
+@app.get("/subject_count")
+def subject_count(user=Depends(get_current_user)):
+    notes = list(
+        notes_collection.find(
+            notes_filter_for_user(user),
+            {"structured_note": 1, "raw_note": 1},
+        )
+    )
+
+    subjects = [extract_subject(note) for note in notes]
+    subjects = [subject for subject in subjects if subject]
+
+    return dict(Counter(subjects))
+
+@app.get("/subject_list")
+def subject_list(user=Depends(get_current_user)):
+    notes = list(
+        notes_collection.find(
+            notes_filter_for_user(user),
+            {"structured_note": 1, "raw_note": 1},
+        )
+    )
+
+    subjects = [extract_subject(note) for note in notes]
+    subjects = sorted(set(subject for subject in subjects if subject))
+
+    return subjects

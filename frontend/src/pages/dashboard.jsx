@@ -4,9 +4,18 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import UploadNotes from "../components/UploadNotes";
 
+const cleanMarkdown = (text) => (text || "").replace(/\*\*/g, "").trim();
+
+const extractSubject = (noteText) => {
+  const safe = cleanMarkdown(noteText);
+  const match = safe.match(/Subject:\s*([^\n]+)/i);
+  return match ? match[1].trim() : "";
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [totalNotes, setTotalNotes] = useState(0);
+  const [totalSubjects, setTotalSubjects] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [uploadToast, setUploadToast] = useState({ visible: false, id: 0, message: "" });
@@ -16,6 +25,38 @@ const Dashboard = () => {
   // const API_BASE_URL = "http://127.0.0.1:8000";
   const user = JSON.parse(localStorage.getItem("user") || "null");
   const displayName = user?.name?.trim();
+
+  // want to show the subject list also on clicking the subject count card from the backend /subject_list
+
+  const refreshDashboardStats = async (token) => {
+    try {
+      if (!token) {
+        setTotalNotes(0);
+        setTotalSubjects(0);
+        return;
+      }
+
+      const res = await axios.get(`${API_BASE_URL}/my-notes`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const notes = Array.isArray(res.data) ? res.data : [];
+      setTotalNotes(notes.length);
+
+      const uniqueSubjects = new Set(
+        notes
+          .map((note) => extractSubject(note.structured_note || note.raw_note || ""))
+          .filter(Boolean)
+      );
+      setTotalSubjects(uniqueSubjects.size);
+    } catch (error) {
+      console.error("Failed to fetch notes:", error);
+      setTotalNotes(0);
+      setTotalSubjects(0);
+    }
+  };
 
   useEffect(() => {
     if (!uploadToast.visible) return;
@@ -28,31 +69,7 @@ const Dashboard = () => {
   }, [uploadToast.id, uploadToast.visible]);
 
   useEffect(() => {
-    const fetchTotalNotes = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-          setTotalNotes(0);
-          return;
-        }
-
-        const res = await axios.get(
-          `${API_BASE_URL}/my-notes/count`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        setTotalNotes(Number(res.data?.total_notes) || 0);
-      } catch (error) {
-        console.error("Failed to fetch notes:", error);
-        setTotalNotes(0);
-      }
-    };
-
-    fetchTotalNotes();
+    refreshDashboardStats(localStorage.getItem("token"));
   }, []);
 
   const showToast = (message) => {
@@ -92,7 +109,9 @@ const Dashboard = () => {
         },
       });
 
-      setTotalNotes((prev) => prev + 1);
+      // Refresh stats after upload to keep note and subject counts accurate.
+      await refreshDashboardStats(token);
+
       showToast("Audio uploaded and converted to notes ✅");
     } catch (error) {
       console.error("Failed to upload audio:", error);
@@ -227,10 +246,13 @@ const Dashboard = () => {
             <h2 className="text-xl sm:text-2xl font-semibold mt-2">{totalNotes}</h2>
           </button>
 
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 hover:border-blue-500 transition">
+          <button
+            onClick={() => navigate("/subject")}
+            className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 hover:border-blue-500 transition text-left"
+          >
             <p className="text-slate-400 text-sm">Subjects</p>
-            <h2 className="text-xl sm:text-2xl font-semibold mt-2">6</h2>
-          </div>
+            <h2 className="text-xl sm:text-2xl font-semibold mt-2">{totalSubjects}</h2>
+          </button>
 
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 hover:border-blue-500 transition">
             <p className="text-slate-400 text-sm">Important Topics</p>
@@ -247,9 +269,11 @@ const Dashboard = () => {
         {showNotesModal && (
           <UploadNotes
             onClose={() => setShowNotesModal(false)}
-            onUploadSuccess={() => {
+            onUploadSuccess={async () => {
+              const token = localStorage.getItem("token");
+              await refreshDashboardStats(token);
+
               showToast("Notes uploaded successfully ✅");
-              setTotalNotes((prev) => prev + 1);
             }}
           />
         )}
