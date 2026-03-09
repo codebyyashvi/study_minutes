@@ -11,6 +11,7 @@ from audio_transcriber import transcribe_audio_chunks
 import tempfile
 import re
 from collections import Counter
+from pdf_processor import extract_pages
 
 app = FastAPI()
 
@@ -25,7 +26,6 @@ app.add_middleware(
 
 # Include auth routes
 app.include_router(auth_router)
-
 
 def notes_filter_for_user(user):
     # Support both current and older note records for the same account.
@@ -162,3 +162,46 @@ def subject_list(user=Depends(get_current_user)):
     subjects = sorted(set(subject for subject in subjects if subject))
 
     return subjects
+
+@app.post("/upload-pdf")
+async def upload_pdf(file: UploadFile = File(...), user=Depends(get_current_user)):
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp:
+        shutil.copyfileobj(file.file, temp)
+        temp_path = temp.name
+
+    try:
+        pages = extract_pages(temp_path)
+
+        if not pages:
+            return {"error": "Could not extract text from PDF"}
+
+        # Combine all pages
+        combined_text = " ".join(page["text"] for page in pages)
+
+        # Clean text
+        combined_text = re.sub(r"\s+", " ", combined_text)
+
+        # Limit size (important for large PDFs)
+        important_text = combined_text[:6000]
+
+        structured_notes = format_notes(important_text)
+
+        note_data = {
+            "user_id": str(user["_id"]),
+            "email": user["email"],
+            "raw_note": important_text,
+            "structured_note": structured_notes,
+            "created_at": datetime.utcnow()
+        }
+
+        notes_collection.insert_one(note_data)
+
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+    return {
+        "message": "PDF processed successfully",
+        "note": structured_notes
+    }

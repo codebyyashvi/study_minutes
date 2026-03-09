@@ -20,13 +20,13 @@ const Dashboard = () => {
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [uploadToast, setUploadToast] = useState({ visible: false, id: 0, message: "" });
   const [isAudioUploading, setIsAudioUploading] = useState(false);
+  const [isPdfUploading, setIsPdfUploading] = useState(false);
   const audioInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
   // const API_BASE_URL = "http://127.0.0.1:8000";
   const user = JSON.parse(localStorage.getItem("user") || "null");
   const displayName = user?.name?.trim();
-
-  // want to show the subject list also on clicking the subject count card from the backend /subject_list
 
   const refreshDashboardStats = async (token) => {
     try {
@@ -86,6 +86,16 @@ const Dashboard = () => {
     audioInputRef.current?.click();
   };
 
+  const triggerPdfPicker = () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      navigate("/auth");
+      return;
+    }
+
+    pdfInputRef.current?.click();
+  };
+
   const handleAudioUpload = async (event) => {
     const selectedFile = event.target.files?.[0];
     if (!selectedFile) return;
@@ -118,6 +128,41 @@ const Dashboard = () => {
       showToast("Audio upload failed. Please try again.");
     } finally {
       setIsAudioUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  const handlePdfUpload = async (event) => {
+    const selectedFile = event.target.files?.[0];
+    if (!selectedFile) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      navigate("/auth");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    try {
+      setIsPdfUploading(true);
+
+      await axios.post(`${API_BASE_URL}/upload-pdf`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      await refreshDashboardStats(token);
+      showToast("PDF uploaded and converted to notes ✅");
+    } catch (error) {
+      const backendMessage = error?.response?.data?.detail;
+      console.error("Failed to upload PDF:", error);
+      showToast(backendMessage || "PDF upload failed. Please try another PDF.");
+    } finally {
+      setIsPdfUploading(false);
       event.target.value = "";
     }
   };
@@ -197,6 +242,14 @@ const Dashboard = () => {
             className="hidden"
           />
 
+          <input
+            ref={pdfInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            onChange={handlePdfUpload}
+            className="hidden"
+          />
+
           {/* Add Note */}
           <button
             onClick={() => setShowNotesModal(true)}
@@ -225,9 +278,15 @@ const Dashboard = () => {
           </button>
 
           {/* Upload PDF */}
-          <button className="bg-slate-800 hover:bg-slate-700 transition rounded-2xl p-5 sm:p-6 text-left border border-slate-700 hover:border-blue-500 group">
+          <button
+            onClick={triggerPdfPicker}
+            disabled={isPdfUploading}
+            className="bg-slate-800 hover:bg-slate-700 transition rounded-2xl p-5 sm:p-6 text-left border border-slate-700 hover:border-blue-500 group disabled:cursor-not-allowed disabled:opacity-70"
+          >
             <FileText className="text-blue-500 group-hover:scale-110 transition mb-4" size={28} />
-            <h2 className="text-lg font-medium">Upload PDF</h2>
+            <h2 className="text-lg font-medium">
+              {isPdfUploading ? "Uploading PDF..." : "Upload PDF"}
+            </h2>
             <p className="text-slate-400 text-sm mt-1">
               Extract key concepts from PDF notes
             </p>
