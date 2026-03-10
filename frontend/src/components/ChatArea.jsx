@@ -10,7 +10,9 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [uploadToast, setUploadToast] = useState({ visible: false, id: 0, message: "" });
   const [isAudioUploading, setIsAudioUploading] = useState(false);
+  const [isPdfUploading, setIsPdfUploading] = useState(false);
   const audioInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
   // const API_BASE_URL = "http://127.0.0.1:8000";
   const navigate = useNavigate();
@@ -66,6 +68,15 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
     audioInputRef.current?.click();
   };
 
+  const triggerPdfPicker = () => {
+    if (!user) {
+      promptLogin();
+      return;
+    }
+
+    pdfInputRef.current?.click();
+  };
+
   const handleAudioUpload = async (event) => {
     const selectedFile = event.target.files?.[0];
     if (!selectedFile) return;
@@ -99,6 +110,40 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
     }
   };
 
+  const handlePdfUpload = async (event) => {
+    const selectedFile = event.target.files?.[0];
+    if (!selectedFile) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      promptLogin();
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    try {
+      setIsPdfUploading(true);
+
+      await axios.post(`${API_BASE_URL}/upload-pdf`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      showToast("PDF uploaded and converted to notes ✅");
+    } catch (error) {
+      const backendMessage = error?.response?.data?.detail;
+      console.error("PDF upload failed:", error);
+      showToast(backendMessage || "PDF upload failed. Please try another PDF.");
+    } finally {
+      setIsPdfUploading(false);
+      event.target.value = "";
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-[#0f172a] text-white">
 
@@ -109,6 +154,14 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
           type="file"
           accept="audio/*"
           onChange={handleAudioUpload}
+          className="hidden"
+        />
+
+        <input
+          ref={pdfInputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          onChange={handlePdfUpload}
           className="hidden"
         />
 
@@ -154,10 +207,11 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
             <FiMic /> <span className="hidden sm:inline">{isAudioUploading ? "Uploading..." : "Audio"}</span>
           </button>
           <button
-            onClick={handleAuthRequiredClick}
-            className="bg-[#1e293b] hover:bg-[#334155] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 whitespace-nowrap"
+            onClick={triggerPdfPicker}
+            disabled={isPdfUploading}
+            className="bg-[#1e293b] hover:bg-[#334155] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-70"
           >
-            <FiFile /> <span className="hidden sm:inline">PDF</span>
+            <FiFile /> <span className="hidden sm:inline">{isPdfUploading ? "Uploading..." : "PDF"}</span>
           </button>
         </div>
 
