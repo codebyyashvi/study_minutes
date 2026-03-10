@@ -314,13 +314,14 @@ const Dashboard = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => navigate("/chat")}
-              className="inline-flex items-center gap-2 rounded-lg border border-blue-500 bg-blue-600 px-3 py-2 text-sm font-medium hover:bg-blue-700"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-blue-500 bg-blue-600 px-2.5 py-2 text-xs font-medium hover:bg-blue-700 sm:h-auto sm:px-3 sm:text-sm"
             >
               <MessageSquare size={16} />
-              Chat with your notes
+              <span className="sm:hidden">Chat</span>
+              <span className="hidden sm:inline">Chat with your notes</span>
             </button>
 
             <div className="relative">
