@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Bookmark } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 
@@ -22,6 +22,8 @@ const parseStructuredNote = (structuredNote) => {
   };
 };
 
+const RECENT_UPLOADS_DAYS = 2;
+
 const NotesPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -31,6 +33,24 @@ const NotesPage = () => {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [importantNoteIds, setImportantNoteIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("importantNoteIds") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
+  const importantIdSet = useMemo(() => new Set(importantNoteIds), [importantNoteIds]);
+
+  const toggleImportant = (noteId) => {
+    setImportantNoteIds((prev) => {
+      const alreadySaved = prev.includes(noteId);
+      const next = alreadySaved ? prev.filter((id) => id !== noteId) : [...prev, noteId];
+      localStorage.setItem("importantNoteIds", JSON.stringify(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     const fetchNotes = async () => {
@@ -76,14 +96,49 @@ const NotesPage = () => {
     return (params.get("subject") || "").trim();
   }, [location.search]);
 
+  const selectedView = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return (params.get("view") || "").trim().toLowerCase();
+  }, [location.search]);
+
   const filteredNotes = useMemo(() => {
+    if (selectedView === "important") {
+      return parsedNotes.filter((note) => importantIdSet.has(note._id));
+    }
+
+    if (selectedView === "recent") {
+      const recentThreshold = Date.now() - RECENT_UPLOADS_DAYS * 24 * 60 * 60 * 1000;
+      return parsedNotes
+        .filter((note) => {
+          if (!note.created_at) return false;
+          const createdAt = new Date(note.created_at).getTime();
+          return Number.isFinite(createdAt) && createdAt >= recentThreshold;
+        })
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        ;
+    }
+
     if (!selectedSubject) return parsedNotes;
 
     const target = cleanMarkdown(selectedSubject).toLowerCase();
     return parsedNotes.filter(
       (note) => cleanMarkdown(note.parsed.subject).toLowerCase() === target
     );
-  }, [parsedNotes, selectedSubject]);
+  }, [importantIdSet, parsedNotes, selectedSubject, selectedView]);
+
+  const pageTitle = useMemo(() => {
+    if (selectedView === "important") return "Important Topics";
+    if (selectedView === "recent") return "Recent Uploads";
+    if (selectedSubject) return `Notes for ${selectedSubject}`;
+    return "Your Notes";
+  }, [selectedSubject, selectedView]);
+
+  const emptyStateText = useMemo(() => {
+    if (selectedView === "important") return "No important topics saved yet.";
+    if (selectedView === "recent") return "No uploads found in the last 2 days.";
+    if (selectedSubject) return `No notes found for ${selectedSubject}.`;
+    return "No notes found yet.";
+  }, [selectedSubject, selectedView]);
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
@@ -100,18 +155,12 @@ const NotesPage = () => {
           <p className="text-sm text-slate-400">My Notes ({filteredNotes.length})</p>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-semibold mb-6">
-          {selectedSubject ? `Notes for ${selectedSubject}` : "Your Notes"}
-        </h1>
+        <h1 className="text-2xl sm:text-3xl font-semibold mb-6">{pageTitle}</h1>
 
         {loading && <p className="text-slate-300">Loading your notes...</p>}
         {!loading && error && <p className="text-red-400">{error}</p>}
         {!loading && !error && filteredNotes.length === 0 && (
-          <p className="text-slate-400">
-            {selectedSubject
-              ? `No notes found for ${selectedSubject}.`
-              : "No notes found yet."}
-          </p>
+          <p className="text-slate-400">{emptyStateText}</p>
         )}
 
         <div className="space-y-4">
@@ -121,9 +170,25 @@ const NotesPage = () => {
                 <p className="text-xl font-bold uppercase tracking-wide text-blue-400">
                   Subject: {note.parsed.subject}
                 </p>
-                <p className="text-xs text-slate-400">
-                  {note.created_at ? new Date(note.created_at).toLocaleString() : "No date"}
-                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => toggleImportant(note._id)}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:border-amber-400"
+                    aria-label={importantIdSet.has(note._id) ? "Unsave topic" : "Save topic"}
+                    title={importantIdSet.has(note._id) ? "Saved as important" : "Save as important"}
+                  >
+                    <Bookmark
+                      size={14}
+                      className={importantIdSet.has(note._id) ? "text-amber-400" : "text-slate-300"}
+                      fill={importantIdSet.has(note._id) ? "currentColor" : "none"}
+                    />
+                    Save
+                  </button>
+
+                  <p className="text-xs text-slate-400">
+                    {note.created_at ? new Date(note.created_at).toLocaleString() : "No date"}
+                  </p>
+                </div>
               </div>
 
               <h2 className="text-lg sm:text-md font-semibold mb-3">

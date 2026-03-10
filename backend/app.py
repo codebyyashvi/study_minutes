@@ -4,6 +4,7 @@ from auth import router as auth_router, get_current_user
 from db import notes_collection
 from models import Note
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from ai_formatter import format_notes
 import shutil
 import os
@@ -14,6 +15,13 @@ from collections import Counter
 from pdf_processor import extract_pages
 
 app = FastAPI()
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def get_ist_timestamp():
+    # Store ISO timestamp with +05:30 offset so clients render correct India time.
+    return datetime.now(IST).isoformat()
 
 # CORS for React
 app.add_middleware(
@@ -73,11 +81,11 @@ async def upload_note(data: dict, user=Depends(get_current_user)):
     structured_note = format_notes(raw_text)
 
     note_data = {
-        "user_id": str(user["_id"]),   # taken from auth token
+        "user_id": str(user["_id"]),  
         "email": user["email"],
         "raw_note": raw_text,
         "structured_note": structured_note,
-        "created_at": datetime.utcnow()
+        "created_at": get_ist_timestamp()
     }
 
     notes_collection.insert_one(note_data)
@@ -125,7 +133,7 @@ async def upload_audio(file: UploadFile = File(...), user=Depends(get_current_us
         "email": user["email"],
         "raw_note": raw_text,
         "structured_note": structured_notes,
-        "created_at": datetime.utcnow()
+        "created_at": get_ist_timestamp()
     }
 
     notes_collection.insert_one(note_data)
@@ -192,7 +200,7 @@ async def upload_pdf(file: UploadFile = File(...), user=Depends(get_current_user
             "email": user["email"],
             "raw_note": important_text,
             "structured_note": structured_notes,
-            "created_at": datetime.utcnow()
+            "created_at": get_ist_timestamp()
         }
 
         notes_collection.insert_one(note_data)
