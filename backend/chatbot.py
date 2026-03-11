@@ -122,6 +122,23 @@ def search_notes(query, user_id):
     return [point.payload["text"] for point in results.points]
 
 
+def delete_note_embeddings(note_id):
+    """Delete all embeddings associated with a note from Qdrant."""
+    try:
+        get_client().delete(
+            collection_name=COLLECTION,
+            points_selector={
+                "filter": {
+                    "must": [
+                        {"key": "note_id", "match": {"value": note_id}}
+                    ]
+                }
+            }
+        )
+    except Exception as e:
+        raise Exception(f"Error deleting embeddings: {str(e)}")
+
+
 def ask_chatbot(question, user_id):
 
     contexts = search_notes(question, user_id)

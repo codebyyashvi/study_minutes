@@ -4,8 +4,8 @@ import axios from "axios";
 const UploadNotes = ({ onClose, onUploadSuccess }) => {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
-  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
-  // const API_BASE_URL = "http://127.0.0.1:8000";
+  // const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
+  const API_BASE_URL = "http://127.0.0.1:8000";
 
   const handleUpload = async () => {
     if (!content.trim()) return;

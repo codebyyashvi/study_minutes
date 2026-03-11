@@ -13,7 +13,7 @@ import tempfile
 import re
 from collections import Counter
 from pdf_processor import extract_pages
-from chatbot import store_note_embeddings, ask_chatbot
+from chatbot import store_note_embeddings, ask_chatbot, delete_note_embeddings
 
 app = FastAPI()
 
@@ -257,3 +257,34 @@ def chatbot(data: dict, user=Depends(get_current_user)):
         "question": question,
         "answer": answer
     }
+
+@app.delete("/notes/{note_id}")
+async def delete_note(note_id: str, user=Depends(get_current_user)):
+    """Delete a note and its embeddings."""
+    from bson import ObjectId
+    
+    try:
+        # Verify the note exists and belongs to the user
+        note = notes_collection.find_one({
+            "_id": ObjectId(note_id),
+            "$or": [
+                {"user_id": str(user["_id"])},
+                {"email": user["email"]}
+            ]
+        })
+        
+        if not note:
+            raise HTTPException(status_code=404, detail="Note not found or you don't have permission to delete it.")
+        
+        # Delete embeddings from Qdrant
+        delete_note_embeddings(note_id)
+        
+        # Delete note from MongoDB
+        notes_collection.delete_one({"_id": ObjectId(note_id)})
+        
+        return {"message": "Note deleted successfully"}
+    
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Error deleting note: {str(e)}")

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Bookmark } from "lucide-react";
+import { ArrowLeft, Bookmark, Trash2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 
@@ -27,8 +27,8 @@ const RECENT_UPLOADS_DAYS = 2;
 const NotesPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
-  // const API_BASE_URL = "http://127.0.0.1:8000";
+  // const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
+  const API_BASE_URL = "http://127.0.0.1:8000";
 
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +50,30 @@ const NotesPage = () => {
       localStorage.setItem("importantNoteIds", JSON.stringify(next));
       return next;
     });
+  };
+
+  const deleteNote = async (noteId) => {
+    if (window.confirm("Are you sure you want to delete this note?")) {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setError("Please login again to delete notes.");
+          return;
+        }
+
+        await axios.delete(`${API_BASE_URL}/notes/${noteId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        setNotes((prev) => prev.filter((note) => note._id !== noteId));
+        setImportantNoteIds((prev) => prev.filter((id) => id !== noteId));
+      } catch (err) {
+        console.error("Failed to delete note:", err);
+        setError("Could not delete the note. Please try again.");
+      }
+    }
   };
 
   useEffect(() => {
@@ -183,6 +207,16 @@ const NotesPage = () => {
                       fill={importantIdSet.has(note._id) ? "currentColor" : "none"}
                     />
                     Save
+                  </button>
+
+                  <button
+                    onClick={() => deleteNote(note._id)}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:border-red-500 hover:text-red-400"
+                    aria-label="Delete note"
+                    title="Delete this note"
+                  >
+                    <Trash2 size={14} />
+                    Delete
                   </button>
 
                   <p className="text-xs text-slate-400">
