@@ -32,6 +32,11 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
     if (onRequireLogin) onRequireLogin();
   };
 
+  const sanitizeBotText = (text) => {
+    if (typeof text !== "string") return "";
+    return text.replace(/\*\*/g, "");
+  };
+
   const handleAuthRequiredClick = () => {
     if (!user) {
       promptLogin();
@@ -58,12 +63,15 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
         { question },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setMessages((prev) => [...prev, { role: "bot", content: response.data.answer }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "bot", content: sanitizeBotText(response.data.answer) },
+      ]);
     } catch (error) {
       const detail = error?.response?.data?.detail;
       setMessages((prev) => [
         ...prev,
-        { role: "bot", content: detail || "Something went wrong. Please try again." },
+        { role: "bot", content: sanitizeBotText(detail || "Something went wrong. Please try again.") },
       ]);
     } finally {
       setIsBotLoading(false);
