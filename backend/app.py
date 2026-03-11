@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, UploadFile, File
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from auth import router as auth_router, get_current_user
 from db import notes_collection
@@ -13,6 +13,7 @@ import tempfile
 import re
 from collections import Counter
 from pdf_processor import extract_pages
+from chatbot import store_note_embeddings, ask_chatbot
 
 app = FastAPI()
 
@@ -88,7 +89,13 @@ async def upload_note(data: dict, user=Depends(get_current_user)):
         "created_at": get_ist_timestamp()
     }
 
-    notes_collection.insert_one(note_data)
+    result = notes_collection.insert_one(note_data)
+
+    store_note_embeddings(
+        structured_note,
+        str(user["_id"]),
+        str(result.inserted_id)
+    )
 
     return {
         "message": "Note saved with AI formatting",
@@ -136,7 +143,13 @@ async def upload_audio(file: UploadFile = File(...), user=Depends(get_current_us
         "created_at": get_ist_timestamp()
     }
 
-    notes_collection.insert_one(note_data)
+    result = notes_collection.insert_one(note_data)
+
+    store_note_embeddings(
+        structured_notes,
+        str(user["_id"]),
+        str(result.inserted_id)
+    )
 
     return {
         "message": "Audio converted successfully",
@@ -203,7 +216,12 @@ async def upload_pdf(file: UploadFile = File(...), user=Depends(get_current_user
             "created_at": get_ist_timestamp()
         }
 
-        notes_collection.insert_one(note_data)
+        result = notes_collection.insert_one(note_data)
+        store_note_embeddings(
+            structured_notes,
+            str(user["_id"]),
+            str(result.inserted_id)
+        )
 
     finally:
         if os.path.exists(temp_path):
@@ -212,4 +230,30 @@ async def upload_pdf(file: UploadFile = File(...), user=Depends(get_current_user
     return {
         "message": "PDF processed successfully",
         "note": structured_notes
+    }
+
+@app.post("/chatbot")
+def chatbot(data: dict, user=Depends(get_current_user)):
+
+    question = data.get("question", "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    try:
+        answer = ask_chatbot(
+            question,
+            str(user["_id"])
+        )
+    except Exception as e:
+        error_msg = str(e)
+        if "getaddrinfo" in error_msg or "ConnectError" in error_msg or "ResponseHandlingException" in error_msg:
+            raise HTTPException(
+                status_code=503,
+                detail="Could not connect to the vector database. Please check your Qdrant cloud cluster is active."
+            )
+        raise HTTPException(status_code=500, detail=f"Chatbot error: {error_msg}")
+
+    return {
+        "question": question,
+        "answer": answer
     }

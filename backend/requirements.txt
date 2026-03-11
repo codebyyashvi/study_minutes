@@ -12,3 +12,4 @@ python-multipart
 SpeechRecognition
 pydub
 pypdf
+qdrant-client
