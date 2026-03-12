@@ -289,7 +289,7 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
       </div>
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto p-2 sm:p-6 space-y-3 sm:space-y-4 max-w-3xl mx-auto w-full">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-6 pb-4 sm:pb-6 space-y-3 sm:space-y-4 max-w-3xl mx-auto w-full">
         {messages.map((msg, i) => (
           <div
             key={i}
@@ -310,7 +310,7 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
       </div>
 
       {/* Input */}
-      <div className="p-2 sm:p-4 border-t border-gray-800 max-w-3xl mx-auto w-full">
+      <div className="p-2 sm:p-4 pb-6 sm:pb-8 border-t border-gray-800 max-w-3xl mx-auto w-full">
         <div className="flex bg-[#1e293b] rounded-xl p-1.5 sm:p-2">
           <input
             type="text"
