@@ -40,6 +40,8 @@ const NotesPage = () => {
       return [];
     }
   });
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState(null);
 
   const importantIdSet = useMemo(() => new Set(importantNoteIds), [importantNoteIds]);
 
@@ -53,27 +55,43 @@ const NotesPage = () => {
   };
 
   const deleteNote = async (noteId) => {
-    if (window.confirm("Are you sure you want to delete this note?")) {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-          setError("Please login again to delete notes.");
-          return;
-        }
+    setNoteToDelete(noteId);
+    setDeleteConfirmModal(true);
+  };
 
-        await axios.delete(`${API_BASE_URL}/notes/${noteId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        setNotes((prev) => prev.filter((note) => note._id !== noteId));
-        setImportantNoteIds((prev) => prev.filter((id) => id !== noteId));
-      } catch (err) {
-        console.error("Failed to delete note:", err);
-        setError("Could not delete the note. Please try again.");
+  const confirmDelete = async () => {
+    if (!noteToDelete) return;
+    
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setError("Please login again to delete notes.");
+        setDeleteConfirmModal(false);
+        setNoteToDelete(null);
+        return;
       }
+
+      await axios.delete(`${API_BASE_URL}/notes/${noteToDelete}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      setNotes((prev) => prev.filter((note) => note._id !== noteToDelete));
+      setImportantNoteIds((prev) => prev.filter((id) => id !== noteToDelete));
+      setDeleteConfirmModal(false);
+      setNoteToDelete(null);
+    } catch (err) {
+      console.error("Failed to delete note:", err);
+      setError("Could not delete the note. Please try again.");
+      setDeleteConfirmModal(false);
+      setNoteToDelete(null);
     }
+  };
+
+  const cancelDelete = () => {
+    setDeleteConfirmModal(false);
+    setNoteToDelete(null);
   };
 
   useEffect(() => {
@@ -247,6 +265,30 @@ const NotesPage = () => {
           ))}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm z-50">
+          <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 shadow-lg max-w-sm mx-4">
+            <h3 className="text-xl font-semibold text-white mb-2">Delete Note</h3>
+            <p className="text-slate-300 mb-6">Are you sure you want to delete this note? This action cannot be undone.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={cancelDelete}
+                className="px-4 py-2 rounded-md bg-slate-700 text-white hover:bg-slate-600 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
