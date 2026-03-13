@@ -102,7 +102,7 @@ const Home = () => {
 
   return (
     <div className="relative flex min-h-screen bg-slate-900">
-      <div className="hidden md:block w-72 shrink-0">
+      <div className="hidden md:fixed md:left-0 md:top-0 md:h-screen md:w-72 md:z-30 md:block">
         <Sidebar
           chats={chats}
           setChats={setChats}
@@ -137,7 +137,7 @@ const Home = () => {
         />
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 md:ml-72">
         <ChatArea
           messages={messages}
           setMessages={setMessages}

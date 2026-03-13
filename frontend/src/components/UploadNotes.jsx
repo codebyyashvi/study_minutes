@@ -17,7 +17,6 @@ const UploadNotes = ({ onClose, onUploadSuccess }) => {
 
       await axios.post(
         `${API_BASE_URL}/upload-note`,
-        // "http://127.0.0.1:8000/upload-note",
         {
           content: content,
         },
