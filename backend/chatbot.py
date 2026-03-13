@@ -152,15 +152,15 @@ def ask_chatbot(question, user_id, chat_id):
     else:
         context = "\n".join(contexts)
 
-    prompt = f"""
-Answer the question using the user's study notes.
+    prompt = f"""You are an AI Study Assistant. You help students by answering questions about their study notes.
 
-Notes:
+IMPORTANT: Always maintain context from the conversation history. If the user is discussing a specific topic or subject, continue referring to that same topic unless they explicitly ask about something different.
+
+User's Study Notes:
 {context}
 
-Question:
-{question}
-"""
+Answer the user's question based on their notes. Keep track of what subject or topic is being discussed throughout the conversation."""
+    
     history = get_chat_history(user_id, chat_id)
     message = [{"role": "system", "content": prompt}]
     message += history
@@ -188,7 +188,7 @@ def get_chat_history(user_id, chat_id):
 
     history = chats_collection.find(
         {"user_id": user_id, "chat_id": str(chat_id)}  # Ensure consistent string comparison
-    ).sort("timestamp", -1).limit(10)
+    ).sort("timestamp", -1).limit(50)  # Keep last 50 messages for better context
 
     messages = []
 
