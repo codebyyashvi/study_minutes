@@ -1,5 +1,8 @@
 import requests
 import uuid
+from zoneinfo import ZoneInfo
+from db import chats_collection
+from datetime import datetime
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance
 from openai import AzureOpenAI
@@ -8,6 +11,7 @@ import os
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+IST = ZoneInfo("Asia/Kolkata")
 
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
@@ -139,7 +143,7 @@ def delete_note_embeddings(note_id):
         raise Exception(f"Error deleting embeddings: {str(e)}")
 
 
-def ask_chatbot(question, user_id):
+def ask_chatbot(question, user_id, chat_id):
 
     contexts = search_notes(question, user_id)
 
@@ -157,11 +161,41 @@ Notes:
 Question:
 {question}
 """
+    history = get_chat_history(user_id, chat_id)
+    message = [{"role": "system", "content": prompt}]
+    message += history
+    message.append({"role": "user", "content": question})
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
+        messages=message
     )
-    return response.choices[0].message.content
+    answer = response.choices[0].message.content
+    save_chat(user_id, chat_id, "user", question)
+    save_chat(user_id, chat_id, "assistant", answer)
+    return answer
+
+def save_chat(user_id, chat_id, role, message):
+    chats_collection.insert_one({
+        "user_id": user_id,
+        "chat_id": str(chat_id),  # Ensure chat_id is stored as string
+        "role": role,
+        "message": message,
+        "timestamp": datetime.now(IST).isoformat()
+    })
+
+def get_chat_history(user_id, chat_id):
+
+    history = chats_collection.find(
+        {"user_id": user_id, "chat_id": str(chat_id)}  # Ensure consistent string comparison
+    ).sort("timestamp", -1).limit(10)
+
+    messages = []
+
+    for h in reversed(list(history)):
+        messages.append({
+            "role": h["role"],
+            "content": h["message"]
+        })
+
+    return messages

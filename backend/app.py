@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from auth import router as auth_router, get_current_user
-from db import notes_collection
+from db import notes_collection, chats_collection
 from models import Note
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -232,17 +232,92 @@ async def upload_pdf(file: UploadFile = File(...), user=Depends(get_current_user
         "note": structured_notes
     }
 
+@app.get("/get-chats")
+def get_chats(user=Depends(get_current_user)):
+    """Get all chats for the user with their titles."""
+    user_id = str(user["_id"])
+    
+    # Get all unique chat IDs for this user
+    chat_ids = chats_collection.distinct("chat_id", {"user_id": user_id})
+    
+    chats_list = []
+    for chat_id in chat_ids:
+        # Ensure chat_id is a string for consistent queries
+        chat_id_str = str(chat_id)
+        
+        # Get the first message (usually the user's first question) to use as title
+        first_message = chats_collection.find_one(
+            {"user_id": user_id, "chat_id": chat_id_str, "role": "user"},
+            sort=[("timestamp", 1)]
+        )
+        
+        # Get the latest message timestamp for sorting
+        latest_message = chats_collection.find_one(
+            {"user_id": user_id, "chat_id": chat_id_str},
+            sort=[("timestamp", -1)]
+        )
+        
+        if first_message:
+            title = first_message["message"][:50]  # First 50 chars of first message
+            if len(first_message["message"]) > 50:
+                title += "..."
+            
+            chats_list.append({
+                "id": chat_id_str,
+                "title": title,
+                "timestamp": latest_message["timestamp"] if latest_message else None
+            })
+    
+    # Sort by timestamp (newest first)
+    chats_list.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+    
+    return chats_list
+
+
+@app.get("/get-chat-history/{chat_id}")
+def get_chat_history(chat_id: str, user=Depends(get_current_user)):
+    """Get all messages in a specific chat."""
+    user_id = str(user["_id"])
+    chat_id = str(chat_id)  # Ensure chat_id is a string
+    
+    # Verify user owns this chat
+    chat_exists = chats_collection.find_one(
+        {"user_id": user_id, "chat_id": chat_id}
+    )
+    
+    if not chat_exists:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # Get all messages in this chat
+    messages = list(chats_collection.find(
+        {"user_id": user_id, "chat_id": chat_id}
+    ).sort("timestamp", 1))
+    
+    return [
+        {
+            "role": "user" if msg["role"] == "user" else "bot",
+            "content": msg["message"]
+        }
+        for msg in messages
+    ]
+
+
 @app.post("/chatbot")
 def chatbot(data: dict, user=Depends(get_current_user)):
 
     question = data.get("question", "").strip()
+    chat_id = str(data.get("chat_id"))  # Convert to string for consistent MongoDB storage
+    
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
+    if not chat_id or chat_id == "None":
+        raise HTTPException(status_code=400, detail="Chat ID is required.")
 
     try:
         answer = ask_chatbot(
             question,
-            str(user["_id"])
+            str(user["_id"]),
+            chat_id
         )
     except Exception as e:
         error_msg = str(e)

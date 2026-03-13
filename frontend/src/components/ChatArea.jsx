@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import UploadNotes from "./UploadNotes";
 
-const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }) => {
+const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar, activeChat, onMessageSent }) => {
   const [input, setInput] = useState("");
   const [showProfile, setShowProfile] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
@@ -49,6 +49,11 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
       return;
     }
 
+    if (!activeChat) {
+      alert("Please select a chat first.");
+      return;
+    }
+
     if (!input.trim() || isBotLoading) return;
 
     const question = input.trim();
@@ -60,13 +65,18 @@ const ChatArea = ({ messages, setMessages, user, onRequireLogin, onOpenSidebar }
       const token = localStorage.getItem("token");
       const response = await axios.post(
         `${API_BASE_URL}/chatbot`,
-        { question },
+        { question, chat_id: activeChat.id },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setMessages((prev) => [
         ...prev,
         { role: "bot", content: sanitizeBotText(response.data.answer) },
       ]);
+      
+      // Refresh chats list to update with new chat title
+      if (onMessageSent) {
+        onMessageSent();
+      }
     } catch (error) {
       const detail = error?.response?.data?.detail;
       setMessages((prev) => [

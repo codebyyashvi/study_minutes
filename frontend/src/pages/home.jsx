@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Sidebar from "../components/Sidebar";
 import ChatArea from "../components/ChatArea";
+import axios from "axios";
 
 const Home = () => {
   const [messages, setMessages] = useState([
@@ -9,10 +10,66 @@ const Home = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const user = JSON.parse(localStorage.getItem("user"));
 
-  const [chats, setChats] = useState([
-    { id: 1, title: "Semiconductor Revision" },
-    { id: 2, title: "DBMS Important Questions" },
-  ]);
+  const [chats, setChats] = useState([]);
+  const [activeChat, setActiveChat] = useState(null);
+  const refreshTimeoutRef = useRef(null);
+  const hasFetchedChatsRef = useRef(false);
+
+  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.1:8000";
+  // const API_BASE_URL = "http://127.0.0.1:8000";
+
+  // Fetch chats on mount (only once)
+  useEffect(() => {
+    if (user && !hasFetchedChatsRef.current) {
+      hasFetchedChatsRef.current = true;
+      fetchChatsOnce();
+    }
+  }, []);
+
+  // When chats are loaded and there's no active chat, set the first one as active
+  useEffect(() => {
+    if (chats.length > 0 && !activeChat) {
+      setActiveChat(chats[0]);
+      setMessages([
+        { role: "bot", content: "Hi 👋 Upload notes and ask me anything!" },
+      ]);
+    }
+  }, [chats, activeChat]);
+
+  const fetchChatsOnce = async () => {
+    if (!user) return;
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get(`${API_BASE_URL}/get-chats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setChats(response.data || []);
+    } catch (error) {
+      console.error("Failed to fetch chats:", error);
+    }
+  };
+
+  const refreshChats = async () => {
+    if (!user) return;
+    
+    // Clear existing timeout
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+    
+    // Debounce: wait 1 second after last call before actually refreshing
+    refreshTimeoutRef.current = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await axios.get(`${API_BASE_URL}/get-chats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setChats(response.data || []);
+      } catch (error) {
+        console.error("Failed to refresh chats:", error);
+      }
+    }, 1000);
+  };
 
   return (
     <div className="relative flex min-h-screen bg-slate-900">
@@ -22,6 +79,8 @@ const Home = () => {
           setChats={setChats}
           setMessages={setMessages}
           user={user}
+          activeChat={activeChat}
+          setActiveChat={setActiveChat}
         />
       </div>
 
@@ -44,6 +103,8 @@ const Home = () => {
           user={user}
           onClose={() => setIsSidebarOpen(false)}
           isMobile
+          activeChat={activeChat}
+          setActiveChat={setActiveChat}
         />
       </div>
 
@@ -53,6 +114,8 @@ const Home = () => {
           setMessages={setMessages}
           user={user}
           onOpenSidebar={() => setIsSidebarOpen(true)}
+          activeChat={activeChat}
+          onMessageSent={refreshChats}
         />
       </div>
     </div>

@@ -10,3 +10,4 @@ client = MongoClient(MONGO_URI)
 db = client.studyminutes
 users_collection = db.users
 notes_collection = db.notes
+chats_collection = db.chats
