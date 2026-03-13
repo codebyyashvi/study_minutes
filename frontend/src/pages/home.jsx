@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import Sidebar from "../components/Sidebar";
 import ChatArea from "../components/ChatArea";
+import SavedChatsModal from "../components/SavedChatsModal";
 import axios from "axios";
 
 const Home = () => {
@@ -12,29 +13,43 @@ const Home = () => {
 
   const [chats, setChats] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
+  const [savedChats, setSavedChats] = useState([]);
+  const [showSavedChatsModal, setShowSavedChatsModal] = useState(false);
+  const [isViewingSavedChats, setIsViewingSavedChats] = useState(false);
   const refreshTimeoutRef = useRef(null);
   const hasFetchedChatsRef = useRef(false);
 
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
   // const API_BASE_URL = "http://127.0.0.1:8000";
 
+  const sanitizeBotText = (text) => {
+    if (typeof text !== "string") return "";
+    return text.replace(/\*\*/g, "");
+  };
+
   // Fetch chats on mount (only once)
   useEffect(() => {
     if (user && !hasFetchedChatsRef.current) {
       hasFetchedChatsRef.current = true;
       fetchChatsOnce();
+      fetchSavedChats();
     }
   }, []);
 
-  // When chats are loaded and there's no active chat, set the first one as active and load its history
+  // When page loads, show a new empty chat (not from sidebar)
+  // Sidebar still shows all previous chats that user can click to open
   useEffect(() => {
-    if (chats.length > 0 && !activeChat) {
-      const firstChat = chats[0];
-      setActiveChat(firstChat);
-      // Load the full chat history for the first chat
-      loadChatHistory(firstChat);
+    if (!activeChat) {
+      const newTempChat = {
+        id: Date.now(),
+        title: "New Chat",
+      };
+      setActiveChat(newTempChat);
+      setMessages([
+        { role: "bot", content: "Hi 👋 Upload notes and ask me anything!" },
+      ]);
     }
-  }, [chats, activeChat]);
+  }, []);
 
   const loadChatHistory = async (chat) => {
     try {
@@ -46,7 +61,7 @@ const Home = () => {
       
       const formattedMessages = response.data.map((msg) => ({
         role: msg.role === "user" ? "user" : "bot",
-        content: msg.content,
+        content: msg.role === "bot" ? sanitizeBotText(msg.content) : msg.content,
       }));
       
       // Only set if we got actual messages, otherwise show welcome
@@ -78,6 +93,19 @@ const Home = () => {
     }
   };
 
+  const fetchSavedChats = async () => {
+    if (!user) return;
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get(`${API_BASE_URL}/get-saved-chats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSavedChats(response.data || []);
+    } catch (error) {
+      console.error("Failed to fetch saved chats:", error);
+    }
+  };
+
   const refreshChats = async () => {
     if (!user) return;
     
@@ -100,16 +128,106 @@ const Home = () => {
     }, 1000);
   };
 
+  const ensureNewChatIsSaved = () => {
+    // If active chat exists and is not already in the chats list, add it
+    if (activeChat && !chats.find((c) => c.id === activeChat.id)) {
+      setChats((prevChats) => [activeChat, ...prevChats]);
+    }
+  };
+
+  const handleSaveChat = (chat) => {
+    // Check if chat is already saved
+    const isSaved = savedChats.find((c) => c.id === chat.id);
+    
+    const token = localStorage.getItem("token");
+    
+    if (isSaved) {
+      // Remove from saved
+      axios.delete(
+        `${API_BASE_URL}/save-chat/${chat.id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).then(() => {
+        setSavedChats(savedChats.filter((c) => c.id !== chat.id));
+      }).catch((error) => {
+        console.error("Failed to unsave chat:", error);
+      });
+    } else {
+      // Add to saved
+      axios.post(
+        `${API_BASE_URL}/save-chat/${chat.id}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).then(() => {
+        setSavedChats([...savedChats, chat]);
+      }).catch((error) => {
+        console.error("Failed to save chat:", error);
+      });
+    }
+  };
+
+  const handleRemoveSavedChat = (chatId) => {
+    const token = localStorage.getItem("token");
+    
+    axios.delete(
+      `${API_BASE_URL}/save-chat/${chatId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).then(() => {
+      setSavedChats(savedChats.filter((c) => c.id !== chatId));
+    }).catch((error) => {
+      console.error("Failed to remove saved chat:", error);
+    });
+  };
+
+  const handleSelectSavedChat = (chat) => {
+    setActiveChat(chat);
+    // Load chat history if it has messages
+    if (chat.timestamp) {
+      loadChatHistory(chat);
+    }
+    setIsSidebarOpen(false);
+  };
+
+  const handleShowSavedChats = () => {
+    setIsViewingSavedChats(true);
+    // Create a new empty chat
+    const newChat = {
+      id: Date.now(),
+      title: "New Chat",
+    };
+    setActiveChat(newChat);
+    setMessages([
+      { role: "bot", content: "Hi 👋 Upload notes and ask me anything!" },
+    ]);
+  };
+
+  const handleBackToAllChats = () => {
+    setIsViewingSavedChats(false);
+    // Create a new empty chat
+    const newChat = {
+      id: Date.now(),
+      title: "New Chat",
+    };
+    setActiveChat(newChat);
+    setMessages([
+      { role: "bot", content: "Hi 👋 Upload notes and ask me anything!" },
+    ]);
+  };
+
   return (
     <div className="relative flex min-h-screen bg-slate-900">
       <div className="hidden md:fixed md:left-0 md:top-0 md:h-screen md:w-72 md:z-30 md:block">
         <Sidebar
-          chats={chats}
-          setChats={setChats}
+          chats={isViewingSavedChats ? savedChats : chats}
+          setChats={isViewingSavedChats ? setSavedChats : setChats}
           setMessages={setMessages}
           user={user}
           activeChat={activeChat}
           setActiveChat={setActiveChat}
+          onSaveChat={handleSaveChat}
+          onShowSavedChats={handleShowSavedChats}
+          isViewingSavedChats={isViewingSavedChats}
+          onBackToAllChats={handleBackToAllChats}
+          savedChatIds={savedChats.map((c) => c.id)}
         />
       </div>
 
@@ -126,14 +244,19 @@ const Home = () => {
         }`}
       >
         <Sidebar
-          chats={chats}
-          setChats={setChats}
+          chats={isViewingSavedChats ? savedChats : chats}
+          setChats={isViewingSavedChats ? setSavedChats : setChats}
           setMessages={setMessages}
           user={user}
           onClose={() => setIsSidebarOpen(false)}
           isMobile
           activeChat={activeChat}
           setActiveChat={setActiveChat}
+          onSaveChat={handleSaveChat}
+          onShowSavedChats={handleShowSavedChats}
+          isViewingSavedChats={isViewingSavedChats}
+          onBackToAllChats={handleBackToAllChats}
+          savedChatIds={savedChats.map((c) => c.id)}
         />
       </div>
 
@@ -145,8 +268,18 @@ const Home = () => {
           onOpenSidebar={() => setIsSidebarOpen(true)}
           activeChat={activeChat}
           onMessageSent={refreshChats}
+          onEnsureNewChatIsSaved={ensureNewChatIsSaved}
         />
       </div>
+
+      {/* Saved Chats Modal */}
+      <SavedChatsModal
+        isOpen={showSavedChatsModal}
+        onClose={() => setShowSavedChatsModal(false)}
+        savedChats={savedChats}
+        onSelectChat={handleSelectSavedChat}
+        onRemoveChat={handleRemoveSavedChat}
+      />
     </div>
   );
 };

@@ -44,6 +44,14 @@ def google_login(data: GoogleToken):
                 "picture": picture,
                 "created_at": datetime.utcnow()
             })
+            stored_picture = picture
+        else:
+            # If user has uploaded a custom profile picture, use that URL
+            # Otherwise use the Google picture or None
+            if user.get("profile_picture_id"):
+                stored_picture = f"https://study-minutes.onrender.com/profile-picture/{user.get('profile_picture_id')}"
+            else:
+                stored_picture = user.get("picture", picture)
 
         token = create_access_token({"email": email})
 
@@ -52,7 +60,9 @@ def google_login(data: GoogleToken):
             "user": {
                 "email": email,
                 "name": name,
-                "picture": picture
+                "picture": stored_picture,
+                "created_at": user.get("created_at") if user else datetime.utcnow(),
+                "updated_at": user.get("updated_at") if user else None
             }
         }
 
