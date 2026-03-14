@@ -34,7 +34,7 @@ const ProfilePage = () => {
   const [message, setMessage] = useState({ type: "", text: "" });
   const fileInputRef = useRef(null);
 
-//   const API_BASE_URL = "http://127.0.0.1:8000";
+  // const API_BASE_URL = "http://127.0.0.1:8000";
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
 
   useEffect(() => {

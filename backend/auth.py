@@ -13,6 +13,7 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")  # Default to localhost if not set
 
 router = APIRouter()
 
@@ -49,7 +50,7 @@ def google_login(data: GoogleToken):
             # If user has uploaded a custom profile picture, use that URL
             # Otherwise use the Google picture or None
             if user.get("profile_picture_id"):
-                stored_picture = f"https://study-minutes.onrender.com/profile-picture/{user.get('profile_picture_id')}"
+                stored_picture = f"{BACKEND_URL}/profile-picture/{user.get('profile_picture_id')}"
             else:
                 stored_picture = user.get("picture", picture)
 

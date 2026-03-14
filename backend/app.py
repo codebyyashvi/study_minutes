@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from auth import router as auth_router, get_current_user
@@ -9,6 +9,11 @@ from zoneinfo import ZoneInfo
 from ai_formatter import format_notes
 import shutil
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 from audio_transcriber import transcribe_audio_chunks
 import tempfile
 import re
@@ -588,7 +593,7 @@ async def update_profile_picture(file: UploadFile = File(...), user=Depends(get_
         
         return {
             "message": "Profile picture updated successfully",
-            "picture_url": f"http://127.0.0.1:8000/profile-picture/{str(file_id)}"
+            "picture_url": f"{BACKEND_URL}/profile-picture/{str(file_id)}"
         }
     
     except HTTPException:
