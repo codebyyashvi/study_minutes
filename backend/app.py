@@ -366,13 +366,25 @@ async def delete_note(note_id: str, user=Depends(get_current_user)):
         if not note:
             raise HTTPException(status_code=404, detail="Note not found or you don't have permission to delete it.")
         
-        # Delete embeddings from Qdrant
-        delete_note_embeddings(note_id)
-        
-        # Delete note from MongoDB
-        notes_collection.delete_one({"_id": ObjectId(note_id)})
-        
-        return {"message": "Note deleted successfully"}
+        # Delete note from MongoDB first so user action succeeds even if vector cleanup fails.
+        delete_result = notes_collection.delete_one({"_id": ObjectId(note_id)})
+        if delete_result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Note not found or already deleted.")
+
+        # Best-effort cleanup of vector embeddings.
+        embeddings_deleted, cleanup_error = delete_note_embeddings(note_id)
+
+        if not embeddings_deleted:
+            return {
+                "message": "Note deleted successfully (embedding cleanup pending)",
+                "embedding_cleanup": "failed",
+                "cleanup_error": cleanup_error,
+            }
+
+        return {
+            "message": "Note deleted successfully",
+            "embedding_cleanup": "done",
+        }
     
     except Exception as e:
         if isinstance(e, HTTPException):

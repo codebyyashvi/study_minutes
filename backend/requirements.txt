@@ -13,3 +13,4 @@ SpeechRecognition
 pydub
 pypdf
 qdrant-client
+tzdata

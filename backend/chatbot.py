@@ -127,7 +127,11 @@ def search_notes(query, user_id):
 
 
 def delete_note_embeddings(note_id):
-    """Delete all embeddings associated with a note from Qdrant."""
+    """Delete all embeddings associated with a note from Qdrant.
+
+    Returns:
+        tuple[bool, str | None]: (success, error_message)
+    """
     try:
         get_client().delete(
             collection_name=COLLECTION,
@@ -139,8 +143,10 @@ def delete_note_embeddings(note_id):
                 }
             }
         )
+        return True, None
     except Exception as e:
-        raise Exception(f"Error deleting embeddings: {str(e)}")
+        # Embedding cleanup is best-effort and should not block note deletion.
+        return False, str(e)
 
 
 def ask_chatbot(question, user_id, chat_id):
