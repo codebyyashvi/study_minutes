@@ -6,7 +6,7 @@ const UploadYoutube = ({ onClose, onUploadSuccess }) => {
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
-//   const API_BASE_URL = "http://127.0.1:8000";
+//   const API_BASE_URL = "http://127.0.0.1:8000";
 
   const handleUpload = async () => {
     if (!youtubeUrl.trim()) {
@@ -47,7 +47,13 @@ const UploadYoutube = ({ onClose, onUploadSuccess }) => {
 
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.detail || "Upload failed");
+      const apiError = err?.response?.data?.detail;
+      if (apiError) {
+        alert(apiError);
+        return;
+      }
+
+      alert("Failed to process this YouTube URL. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -74,7 +80,7 @@ const UploadYoutube = ({ onClose, onUploadSuccess }) => {
         />
 
         <p className="text-xs text-slate-400 mt-2 ml-1">
-          We'll extract audio from the video and create structured notes
+          Transcript is fetched via FetchTranscript API and then formatted into notes
         </p>
 
         <div className="flex justify-end gap-3 mt-6">
@@ -91,7 +97,7 @@ const UploadYoutube = ({ onClose, onUploadSuccess }) => {
             disabled={loading}
             className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-60 transition-colors"
           >
-            {loading ? "Processing..." : "Add Video"}
+            {loading ? "Processing Video..." : "Add Video"}
           </button>
 
         </div>

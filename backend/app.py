@@ -9,13 +9,14 @@ from zoneinfo import ZoneInfo
 from ai_formatter import format_notes
 import shutil
 import os
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+FETCHTRANSCRIPT_API_KEY = os.getenv("FETCHTRANSCRIPT_API_KEY", "")
 from audio_transcriber import transcribe_audio_chunks
-from youtube_processor import extract_youtube_transcript, validate_youtube_url, get_video_title
 import tempfile
 import re
 from collections import Counter
@@ -66,6 +67,123 @@ def extract_subject(note_doc):
         return ""
 
     return match.group(1).strip()
+
+
+def extract_youtube_video_id(youtube_url):
+    """Extract YouTube video id from standard URL formats."""
+    patterns = [
+        r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/|youtube\.com/shorts/)([^&\n?#]+)",
+        r"youtube\.com/watch\?.*v=([^&\n?#]+)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, youtube_url)
+        if match:
+            return match.group(1)
+
+    return None
+
+
+def fetch_transcript_from_fetchtranscript(video_id):
+    """Fetch transcript text from FetchTranscript API."""
+    if not FETCHTRANSCRIPT_API_KEY:
+        raise HTTPException(status_code=500, detail="FetchTranscript API key is not configured")
+
+    url = f"https://api.fetchtranscript.com/v1/transcripts/{video_id}"
+    headers = {
+        "Authorization": f"Bearer {FETCHTRANSCRIPT_API_KEY}",
+    }
+    params = {
+        "format": "text",
+        "lang": "en",
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch transcript provider: {exc}")
+
+    error_payload = {}
+    error_message = ""
+    try:
+        error_payload = response.json() if response.content else {}
+        if isinstance(error_payload, dict):
+            error_message = (error_payload.get("message") or "").strip()
+    except ValueError:
+        error_payload = {}
+        error_message = ""
+
+    if response.status_code == 404:
+        raise HTTPException(
+            status_code=400,
+            detail=error_message or "No transcript available for this video"
+        )
+
+    if response.status_code in (401, 403):
+        raise HTTPException(
+            status_code=500,
+            detail=error_message or "FetchTranscript API authentication failed"
+        )
+
+    if response.status_code == 402:
+        raise HTTPException(
+            status_code=402,
+            detail=error_message or "FetchTranscript credits exhausted"
+        )
+
+    if response.status_code == 429:
+        raise HTTPException(
+            status_code=429,
+            detail=error_message or "Transcript provider rate limit exceeded"
+        )
+
+    if response.status_code == 503:
+        raise HTTPException(
+            status_code=503,
+            detail=error_message or "Transcript provider temporarily unavailable"
+        )
+
+    if response.status_code >= 400:
+        provider_error_code = ""
+        if isinstance(error_payload, dict):
+            provider_error_code = (error_payload.get("error") or "").strip()
+
+        detail = error_message or f"Transcript provider error ({response.status_code})"
+        if provider_error_code:
+            detail = f"{provider_error_code}: {detail}"
+
+        raise HTTPException(status_code=502, detail=detail)
+
+    payload = response.json()
+
+    # Handle multiple possible payload shapes safely.
+    transcript_text = ""
+    for key in ["text", "transcript_text", "transcript", "content"]:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            transcript_text = value.strip()
+            break
+
+        if isinstance(value, list):
+            parts = []
+            for item in value:
+                if isinstance(item, dict):
+                    text_part = (item.get("text") or item.get("content") or "").strip()
+                    if text_part:
+                        parts.append(text_part)
+                elif isinstance(item, str) and item.strip():
+                    parts.append(item.strip())
+            if parts:
+                transcript_text = " ".join(parts)
+                break
+
+    if not transcript_text:
+        raise HTTPException(status_code=400, detail="Transcript was empty for this video")
+
+    metadata = payload.get("metadata") if isinstance(payload, dict) else None
+    metadata_title = metadata.get("title") if isinstance(metadata, dict) else ""
+    video_title = payload.get("title") or payload.get("video_title") or metadata_title or f"YouTube Video ({video_id[:8]})"
+    return transcript_text, video_title
 
 # Example protected route
 @app.get("/protected")
@@ -166,33 +284,32 @@ async def upload_audio(file: UploadFile = File(...), user=Depends(get_current_us
 @app.post("/upload-youtube")
 async def upload_youtube(data: dict, user=Depends(get_current_user)):
     """
-    Process YouTube video: extract captions/transcript, format, and store as note.
+    Process YouTube URL by fetching transcript from FetchTranscript API,
+    then format and store as structured notes.
     Expects: {"youtube_url": "https://www.youtube.com/watch?v=..."}
     """
     
-    youtube_url = data.get("youtube_url", "").strip()
-    
-    if not youtube_url:
-        raise HTTPException(status_code=400, detail="YouTube URL is required")
-    
-    if not validate_youtube_url(youtube_url):
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
-    
     try:
-        # Extract transcript from YouTube
-        raw_text = extract_youtube_transcript(youtube_url)
-        
-        if not raw_text or raw_text.strip() == "":
-            raise HTTPException(status_code=400, detail="Could not extract captions from video")
+        youtube_url = (data.get("youtube_url") or "").strip()
+
+        if not youtube_url:
+            raise HTTPException(status_code=400, detail="YouTube URL is required")
+
+        video_id = extract_youtube_video_id(youtube_url)
+        if not video_id:
+            raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+
+        transcript_text, video_title = fetch_transcript_from_fetchtranscript(video_id)
         
         # Format text to structured notes
-        structured_notes = format_notes(raw_text)
-        
-        # Get video title for reference
-        video_title = get_video_title(youtube_url)
-        
-        # Add source info to raw note
-        raw_text_with_source = f"[Source: YouTube - {video_title}]\n\n{raw_text}"
+        structured_notes = format_notes(transcript_text)
+
+        # Add source info to raw note for traceability
+        raw_text_with_source = (
+            f"[Source: YouTube - {video_title}]\n"
+            f"[URL: {youtube_url}]\n\n"
+            f"{transcript_text}"
+        )
         
         note_data = {
             "user_id": str(user["_id"]),
@@ -215,7 +332,7 @@ async def upload_youtube(data: dict, user=Depends(get_current_user)):
         )
         
         return {
-            "message": "YouTube transcript extracted and notes created successfully",
+            "message": "YouTube transcript processed successfully",
             "video_title": video_title,
             "note": structured_notes
         }

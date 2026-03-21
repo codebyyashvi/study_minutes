@@ -14,4 +14,3 @@ pydub
 pypdf
 qdrant-client
 tzdata
-youtube-transcript-api
