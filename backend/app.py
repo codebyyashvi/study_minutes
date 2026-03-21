@@ -15,6 +15,7 @@ load_dotenv()
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 from audio_transcriber import transcribe_audio_chunks
+from youtube_processor import download_youtube_audio, validate_youtube_url, get_video_title
 import tempfile
 import re
 from collections import Counter
@@ -161,6 +162,94 @@ async def upload_audio(file: UploadFile = File(...), user=Depends(get_current_us
         "message": "Audio converted successfully",
         "note": structured_notes
     }
+
+@app.post("/upload-youtube")
+async def upload_youtube(data: dict, user=Depends(get_current_user)):
+    """
+    Process YouTube video: extract audio, transcribe, format, and store as note.
+    Expects: {"youtube_url": "https://www.youtube.com/watch?v=..."}
+    """
+    
+    youtube_url = data.get("youtube_url", "").strip()
+    
+    if not youtube_url:
+        raise HTTPException(status_code=400, detail="YouTube URL is required")
+    
+    if not validate_youtube_url(youtube_url):
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+    
+    audio_file = None
+    try:
+        # Download audio from YouTube
+        audio_file = download_youtube_audio(youtube_url)
+        
+        if not os.path.exists(audio_file):
+            raise HTTPException(status_code=400, detail="Failed to download YouTube audio")
+        
+        # Transcribe audio to text
+        raw_text = transcribe_audio_chunks(audio_file)
+        
+        if not raw_text or raw_text.strip() == "":
+            raise HTTPException(status_code=400, detail="Could not transcribe audio from video")
+        
+        # Format text to structured notes
+        structured_notes = format_notes(raw_text)
+        
+        # Get video title for reference
+        video_title = get_video_title(youtube_url)
+        
+        # Add source info to raw note
+        raw_text_with_source = f"[Source: YouTube - {video_title}]\n\n{raw_text}"
+        
+        note_data = {
+            "user_id": str(user["_id"]),
+            "email": user["email"],
+            "raw_note": raw_text_with_source,
+            "structured_note": structured_notes,
+            "source": "youtube",
+            "youtube_url": youtube_url,
+            "video_title": video_title,
+            "created_at": get_ist_timestamp()
+        }
+        
+        result = notes_collection.insert_one(note_data)
+        
+        # Store embeddings for search
+        store_note_embeddings(
+            structured_notes,
+            str(user["_id"]),
+            str(result.inserted_id)
+        )
+        
+        return {
+            "message": "YouTube video processed successfully",
+            "video_title": video_title,
+            "note": structured_notes
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing YouTube video: {str(e)}")
+    finally:
+        # Clean up audio file
+        if audio_file and os.path.exists(audio_file):
+            try:
+                os.remove(audio_file)
+            except:
+                pass
+        
+        # Clean up temporary directory if empty
+        temp_dir = tempfile.gettempdir()
+        youtube_temp = os.path.join(temp_dir, "youtube_audio_temp")
+        if os.path.exists(youtube_temp):
+            try:
+                import shutil
+                # Only remove if directory is empty or has old files
+                if not os.listdir(youtube_temp):
+                    shutil.rmtree(youtube_temp)
+            except:
+                pass
 
 @app.get("/subject_count")
 def subject_count(user=Depends(get_current_user)):

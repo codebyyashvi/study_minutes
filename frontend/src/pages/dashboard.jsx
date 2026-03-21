@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Plus, Mic, FileText, MessageSquare, TrendingUp, Zap, BookOpen, Target } from "lucide-react";
+import { Plus, Mic, FileText, MessageSquare, TrendingUp, Zap, BookOpen, Target, Youtube } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import UploadNotes from "../components/UploadNotes";
+import UploadYoutube from "../components/UploadYoutube";
 import studyMinutesLogo from "../assets/studyminutes_logo.png";
 
 // Loading Skeleton Component
@@ -74,9 +75,11 @@ const Dashboard = () => {
   const [avgUploadsPerActiveDay, setAvgUploadsPerActiveDay] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
+  const [showYoutubeModal, setShowYoutubeModal] = useState(false);
   const [uploadToast, setUploadToast] = useState({ visible: false, id: 0, message: "", type: "success" });
   const [isAudioUploading, setIsAudioUploading] = useState(false);
   const [isPdfUploading, setIsPdfUploading] = useState(false);
+  const [isYoutubeUploading, setIsYoutubeUploading] = useState(false);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [statsError, setStatsError] = useState(null);
   const audioInputRef = useRef(null);
@@ -356,6 +359,14 @@ const Dashboard = () => {
     }
   };
 
+  const handleYoutubeUploadSuccess = async () => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      await refreshDashboardStats(token);
+      showToast("YouTube video processed and notes created ✅", "success");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 to-slate-900 text-white">
       {/* Main Content */}
@@ -520,6 +531,24 @@ const Dashboard = () => {
               </h2>
               <p className="text-slate-400 text-sm mt-1">
                 Extract key points from PDF documents
+              </p>
+            </div>
+          </button>
+
+          {/* Add YouTube Video */}
+          <button
+            onClick={() => setShowYoutubeModal(true)}
+            disabled={isYoutubeUploading}
+            className="group relative overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 p-5 sm:p-6 text-left transition-all duration-300 hover:border-red-500/50 hover:shadow-lg hover:shadow-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-red-500/0 to-red-500/0 group-hover:from-red-500/5 group-hover:to-red-500/10 transition-all duration-300"></div>
+            <div className="relative">
+              <Youtube className="text-red-500 group-hover:scale-110 group-hover:text-red-400 transition-all mb-4" size={28} />
+              <h2 className="text-lg font-semibold">
+                {isYoutubeUploading ? "Processing Video..." : "YouTube Video"}
+              </h2>
+              <p className="text-slate-400 text-sm mt-1">
+                Convert video lectures to notes
               </p>
             </div>
           </button>
@@ -759,6 +788,14 @@ const Dashboard = () => {
               await refreshDashboardStats(token);
               showToast("Notes uploaded successfully ✅", "success");
             }}
+          />
+        )}
+
+        {/* YouTube Modal */}
+        {showYoutubeModal && (
+          <UploadYoutube
+            onClose={() => setShowYoutubeModal(false)}
+            onUploadSuccess={handleYoutubeUploadSuccess}
           />
         )}
 
