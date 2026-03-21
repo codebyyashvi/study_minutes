@@ -15,7 +15,7 @@ load_dotenv()
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 from audio_transcriber import transcribe_audio_chunks
-from youtube_processor import download_youtube_audio, validate_youtube_url, get_video_title
+from youtube_processor import extract_youtube_transcript, validate_youtube_url, get_video_title
 import tempfile
 import re
 from collections import Counter
@@ -166,7 +166,7 @@ async def upload_audio(file: UploadFile = File(...), user=Depends(get_current_us
 @app.post("/upload-youtube")
 async def upload_youtube(data: dict, user=Depends(get_current_user)):
     """
-    Process YouTube video: extract audio, transcribe, format, and store as note.
+    Process YouTube video: extract captions/transcript, format, and store as note.
     Expects: {"youtube_url": "https://www.youtube.com/watch?v=..."}
     """
     
@@ -178,19 +178,12 @@ async def upload_youtube(data: dict, user=Depends(get_current_user)):
     if not validate_youtube_url(youtube_url):
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
     
-    audio_file = None
     try:
-        # Download audio from YouTube
-        audio_file = download_youtube_audio(youtube_url)
-        
-        if not os.path.exists(audio_file):
-            raise HTTPException(status_code=400, detail="Failed to download YouTube audio")
-        
-        # Transcribe audio to text
-        raw_text = transcribe_audio_chunks(audio_file)
+        # Extract transcript from YouTube
+        raw_text = extract_youtube_transcript(youtube_url)
         
         if not raw_text or raw_text.strip() == "":
-            raise HTTPException(status_code=400, detail="Could not transcribe audio from video")
+            raise HTTPException(status_code=400, detail="Could not extract captions from video")
         
         # Format text to structured notes
         structured_notes = format_notes(raw_text)
@@ -222,7 +215,7 @@ async def upload_youtube(data: dict, user=Depends(get_current_user)):
         )
         
         return {
-            "message": "YouTube video processed successfully",
+            "message": "YouTube transcript extracted and notes created successfully",
             "video_title": video_title,
             "note": structured_notes
         }
@@ -231,25 +224,6 @@ async def upload_youtube(data: dict, user=Depends(get_current_user)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing YouTube video: {str(e)}")
-    finally:
-        # Clean up audio file
-        if audio_file and os.path.exists(audio_file):
-            try:
-                os.remove(audio_file)
-            except:
-                pass
-        
-        # Clean up temporary directory if empty
-        temp_dir = tempfile.gettempdir()
-        youtube_temp = os.path.join(temp_dir, "youtube_audio_temp")
-        if os.path.exists(youtube_temp):
-            try:
-                import shutil
-                # Only remove if directory is empty or has old files
-                if not os.listdir(youtube_temp):
-                    shutil.rmtree(youtube_temp)
-            except:
-                pass
 
 @app.get("/subject_count")
 def subject_count(user=Depends(get_current_user)):

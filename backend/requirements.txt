@@ -14,5 +14,4 @@ pydub
 pypdf
 qdrant-client
 tzdata
-yt-dlp
-imageio-ffmpeg
+youtube-transcript-api
