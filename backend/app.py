@@ -35,7 +35,7 @@ def get_ist_timestamp():
 # CORS for React
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://study-minutes.vercel.app", "https://www.studyminutes.tech", "https://studyminutes.tech"],
+    allow_origins=["http://localhost:5173", "https://study-minutes.vercel.app", "https://www.studyminutes.tech", "https://studyminutes.tech", "https://studyminutes.duckdns.org"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
