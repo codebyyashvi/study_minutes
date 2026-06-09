@@ -1,3 +1,6 @@
+## Live Demo:
+- [StudyMinutes Demo](https://studyminutes.tech/)
+
 # StudyMinutes
 
 StudyMinutes is an AI-powered study companion that helps students turn raw content into clean, usable notes and chat with those notes later.
