@@ -1,0 +1,258 @@
+================================================================================
+STUDYMINUTES - PROJECT EXPLANATION & TECHNICAL ANALYSIS
+================================================================================
+
+This document provides a comprehensive, end-to-end technical explanation of the 
+StudyMinutes project. It details the system architecture, codebases, directories,
+data flows, chunking methodologies, database details, and LLM orchestration.
+
+---
+1. OVERVIEW & PRODUCT GOAL
+---
+StudyMinutes is an AI-powered study companion designed to help students convert 
+messy, raw educational material into highly structured study notes and 
+subsequently query those materials using an interactive, context-aware chatbot.
+
+The application accepts multiple input modalities:
+- Plain raw text input
+- Audio recordings / uploaded audio files
+- PDF document uploads
+- YouTube video URLs (auto-extracting transcripts)
+
+Once processed and structured, notes are indexable and queryable using RAG 
+(Retrieval-Augmented Generation), so students receive factual responses grounded 
+strictly in their own uploaded study notes.
+
+---
+2. SYSTEM ARCHITECTURE
+---
+The project is built on a split-monorepo model:
+- Backend: Built using Python, FastAPI, MongoDB (NoSQL database), Qdrant (Vector database), 
+  and Azure OpenAI / OpenRouter for LLM and embedding services.
+- Frontend: Built using React 19, Vite, Tailwind CSS, and Google OAuth.
+
+High-level architecture flow:
+  [User Inputs: Text/Audio/PDF/YouTube] -> [Frontend Upload Components]
+                                                  |
+                                                  v  (JWT Auth)
+                                       [FastAPI API Backend]
+                                                  |
+                    -------------------------------------------------------------
+                    |                             |                             |
+                    v                             v                             v
+           [Raw Extraction]             [AI Formatting (LLM)]           [Storage: MongoDB]
+        (pydub, pypdf, youtube API)  (Structured formatting via GPT)      (User info, notes,
+                    |                             |                      conversations, GridFS)
+                    v                             v
+            [Word-Based Chunking]      [Embedding Generation]
+            (120-word segments)     (OpenRouter Llama-Nemotron)
+                    |                             |
+                    -------------------------------
+                                  |
+                                  v
+                          [Qdrant Vector DB]
+                     (Dense vector index search)
+
+---
+3. CHUNKING METHODOLOGY & EMBEDDING PIPELINE
+---
+In any RAG system, chunking is the process of breaking down long text documents 
+into smaller, manageable segments (chunks) to ensure that vector search can pinpoint
+highly relevant context and stay within LLM context limitations.
+
+In StudyMinutes, the chunking and vector storage process is implemented in 
+backend/chatbot.py.
+
+### The Chunking Technique
+The technique used is Fixed-Size Word-Count Chunking. The text of a formatted note 
+is split into words and grouped into segments containing exactly 120 words with 
+no overlapping content.
+
+Here is the exact chunking code from backend/chatbot.py:
+```python
+def split_text(text, chunk_size=120):
+    words = text.split()
+    chunks = []
+
+    for i in range(0, len(words), chunk_size):
+        chunks.append(" ".join(words[i:i+chunk_size]))
+
+    return chunks
+```
+
+### Technical details of the chunking:
+1. text.split() separates the document by standard whitespace.
+2. The loop increments by chunk_size (120 words), slicing the list of words: words[i:i+chunk_size].
+3. " ".join(...) reconstructs the text segment back into a single string.
+4. There is no sliding window or overlap configured (stride = chunk_size).
+
+### Embedding Generation:
+For each chunk, the system requests a vector embedding from the OpenRouter API:
+- Endpoint: https://openrouter.ai/api/v1/embeddings
+- Model: nvidia/llama-nemotron-embed-vl-1b-v2:free
+- Vector Dimension: 2048 dimensions
+- Metric: Cosine similarity (Distance.COSINE)
+
+### Vector Storage (Qdrant):
+The chunks and embeddings are stored inside a Qdrant collection named "user_notes".
+Each vector point contains a payload representing:
+- user_id: Identifier of the note owner (used as a pre-filter to prevent cross-user data leakage).
+- note_id: Reference link back to the note document inside MongoDB.
+- text: The actual 120-word text string block.
+
+Here is how points are structured and upserted:
+```python
+def store_note_embeddings(note_text, user_id, note_id):
+    chunks = split_text(note_text)
+    points = []
+
+    for chunk in chunks:
+        embedding = get_embedding(chunk)
+        points.append({
+            "id": str(uuid.uuid4()),
+            "vector": embedding,
+            "payload": {
+                "user_id": user_id,
+                "note_id": note_id,
+                "text": chunk
+            }
+        })
+
+    get_client().upsert(
+        collection_name=COLLECTION,
+        points=points
+    )
+```
+
+---
+4. BACKEND CODE EXPLANATION (backend/)
+---
+The backend folder implements a REST API using FastAPI. Here is what each file does:
+
+### 1. backend/app.py
+This is the entry point of the backend API.
+- Configures CORS middleware (allowing localhost:5173, vercel, duckdns, etc.).
+- Includes routing modules (like authentication).
+- Exposes note upload endpoints:
+  - /upload-note: Directly accepts user raw text, calls formatting LLM, saves it to MongoDB, and triggers Qdrant vector embedding.
+  - /upload-audio: Stores incoming audio into a temp file, runs speech-to-text, formats the transcript with LLM, saves it to MongoDB, and embeds it in Qdrant.
+  - /upload-pdf: Saves incoming PDF, extracts page texts, combines and sanitizes text (cropping it to the first 6,000 characters to prevent token overflow), formats, saves, and embeds.
+  - /upload-youtube: Validates and parses a YouTube link. Fetches the video transcripts using FetchTranscript API (configured in .env) or falls back to youtube_transcript_api, formats the transcript, and stores/embeds it.
+- Exposes user analytics and organizational endpoints:
+  - /subject_count & /subject_list: Extracts subjects using regular expressions (matching "Subject: <text>") and calculates frequency counts for dashboard analytics.
+  - /export-notes: Aggregates all user notes and sends them as a stream of raw plain-text download.
+- Exposes Chat & Chat History Management:
+  - /chatbot: Accepts questions, calls chatbot.py functions to retrieve vector matches and generate GPT answers.
+  - /get-chats, /get-chat-history/{chat_id}, /rename-chat/{chat_id}, /delete-chat/{chat_id}, /save-chat/{chat_id}: Handles the CRUD operations for conversational chat threads.
+- Exposes Profile Settings:
+  - /update-profile-picture: Uploads pictures and stores them in GridFS inside MongoDB, returning dynamic URLs linking to /profile-picture/{file_id}.
+  - /update-profile-name: Updates usernames.
+
+### 2. backend/auth.py
+Manages user authentication and tokens.
+- Google Login verification: Verifies incoming Google Client OAuth tokens on the server using google-auth library's verify_oauth2_token.
+- JWT Access Tokens: If the Google token is valid, creates a secure local JSON Web Token (JWT) using the python-jose library, which expires in 7 days.
+- Security Dependency (get_current_user): Parses incoming HTTP headers to decode the Bearer JWT token, fetching matching user documents from MongoDB. If invalid, raises HTTP 401/404 exceptions.
+
+### 3. backend/chatbot.py
+Implements Vector DB integration, semantic search, and the LLM prompt.
+- Qdrant Connection: Initializes QdrantClient using credentials and creates the "user_notes" collection if it does not already exist. It also builds payload indexes for user_id to ensure efficient queries.
+- ask_chatbot: 
+  1. Embeds the student's question using the Llama-Nemotron embedding model.
+  2. Runs a semantic search in Qdrant (filtered by the user_id payload) to fetch the top 5 most similar chunks.
+  3. Joins these chunks to form a context block.
+  4. Fetches the conversation history (last 50 messages) from MongoDB to preserve continuity.
+  5. Compiles a detailed prompt guiding the LLM to behave as a grounding assistant.
+  6. Submits the prompt to Azure OpenAI (using the gpt-4o-mini model) and logs the conversation history in MongoDB.
+
+### 4. backend/db.py
+Initializes connections to MongoDB:
+- Sets up client MongoClient(MONGO_URI).
+- References collections: db.users, db.notes, db.chats, db.saved_chats.
+- Sets up GridFS (fs = GridFS(db)) to store large binary objects such as custom user profile pictures.
+
+### 5. backend/models.py
+Defines typing contracts using Pydantic:
+- GoogleToken: Standardizes format for incoming Google credentials ({ token: str }).
+- Note: Maps note parameters ({ user_id, subject, title, content }).
+
+### 6. backend/ai_formatter.py
+Organizes messy raw input into standard student notes using gpt-4o-mini:
+- Directs the LLM to process input files under strict structural outlines:
+  - Subject:
+  - Title:
+  - Explanation:
+  - Key Points:
+- Standardizes abbreviations if they are clear, but keeps them verbatim if they are ambiguous.
+
+### 7. backend/audio_transcriber.py
+Processes audio uploads:
+- Uses pydub (AudioSegment) to divide long audio files into smaller chunks of 60 seconds (60000ms).
+- Temporarily writes these chunks to the disk as wav files.
+- Loops through chunks and utilizes the SpeechRecognition library (recognizer.recognize_google) to transcribe each piece.
+- Combines the transcription of all chunks, deletes the temporary files, and returns the full combined text.
+
+### 8. backend/pdf_processor.py
+- Processes uploaded PDFs page-by-page using pypdf's PdfReader.
+- Extracts page text, filters out empty text, and returns a structured list containing text and corresponding page numbers.
+
+### 9. backend/youtube_processor.py
+- Validates YouTube URLs using regular expression patterns.
+- Retrieves video captions/transcripts in English (with fallbacks to alternative languages) using the youtube-transcript-api package.
+
+### 10. Helper scripts
+- delete_collection.py: Resets/deletes the "user_notes" collection from Qdrant.
+- embed_existing_notes.py: Script to iterate through all notes in MongoDB, chunk them, and backfill their embeddings in Qdrant.
+
+---
+5. FRONTEND CODE EXPLANATION (frontend/)
+---
+The frontend is a React application built with Tailwind CSS.
+
+### Routing (frontend/src/App.jsx)
+- Routes are protected based on token presence in local storage:
+  - GuestRoute: If logged in, redirects / to /dashboard.
+  - ProtectedRoute: If not logged in, redirects pages like /dashboard, /chat, /notes, /profile, /settings, /subject to /.
+- Pages:
+  - Home: Serves as the interactive chat workspace.
+  - Dashboard: Analytics graphs, statistics overview, and file/audio upload portals.
+  - NotesPage: Main view showing all uploaded formatted notes.
+  - SubjectPage: Allows browsing notes filtered by academic subjects.
+  - ProfilePage / SettingsPage: Controls user details (username, profile pictures).
+
+### Key Frontend Components (frontend/src/components/)
+- Sidebar.jsx: Renders navigation panels, list of recent chat threads, saved chat groups, and rename/delete options for chat histories.
+- ChatArea.jsx: Displays messages, input box, loading statuses, and auto-scroll behaviors.
+- TopNavbar.jsx: Profile icons, username indicators, quick settings toggles, and navigation toggles.
+- UploadNotes.jsx / UploadYoutube.jsx: Form modals handling text uploads and YouTube imports.
+
+---
+6. END-TO-END METHODOLOGY FLOW (HOW IT WORKS)
+---
+
+### Step 1: Note Creation & Processing
+1. A student submits content (e.g., records audio lecturing on "Introduction to Data Structures").
+2. The frontend sends the file to /upload-audio.
+3. The backend chunks the audio file into 1-minute blocks, transcribes each via Google Web Speech, and joins them into a single raw transcript string.
+4. The raw transcript string is sent to Azure OpenAI gpt-4o-mini. The model formats the notes:
+   - Subject: Computer Science
+   - Title: Introduction to Data Structures
+   - Explanation: [...]
+   - Key Points: [...]
+5. The raw transcript and the formatted text are stored together as a document inside MongoDB notes collection.
+
+### Step 2: Note Embedding & Vector Indexing
+1. The backend automatically extracts the formatted text and calls store_note_embeddings.
+2. The text is chunked into 120-word fragments.
+3. Each fragment is sent to the OpenRouter embedding API to generate a 2048-dimensional embedding vector using the nvidia/llama-nemotron-embed-vl-1b-v2:free model.
+4. The vectors are upserted into Qdrant, referencing the user_id and note_id in the payload data.
+
+### Step 3: Interactive RAG Chat
+1. The student navigates to the Chat interface and asks: "What did the lecture say about binary trees?"
+2. The backend embeds this query using the same OpenRouter API model.
+3. The backend queries Qdrant with the embedding vector and applies a metadata filter: must match {"user_id": user_id}.
+4. Qdrant performs a Cosine Similarity search and returns the top 5 text chunks most relevant to "binary trees".
+5. The backend gathers these 5 chunks, pulls the last 50 messages of the chat history from MongoDB, compiles them into a system context prompt, and sends the prompt to Azure OpenAI gpt-4o-mini.
+6. Azure OpenAI outputs an answer grounded in the notes.
+7. The answer is saved to MongoDB chats collection and displayed to the user on the frontend screen.
+================================================================================
