@@ -19,7 +19,7 @@ const TopNavbar = ({
   const pdfInputRef = useRef(null);
   const profileMenuRef = useRef(null);
   // const API_BASE_URL = "http://127.0.0.1:8000";
-  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.1:8000";
+  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
   const navigate = useNavigate();
 
   // Close profile dropdown when clicking outside
@@ -63,15 +63,21 @@ const TopNavbar = ({
     const selectedFile = event.target.files?.[0];
     if (!selectedFile) return;
 
-    // Validate file size (max 500MB)
-    if (selectedFile.size > 500 * 1024 * 1024) {
-      onShowToast("Audio file is too large (max 500MB)", "error");
-      return;
-    }
-
     const token = localStorage.getItem("token");
     if (!token) {
       promptLogin();
+      return;
+    }
+
+    // Validate file type
+    if (!selectedFile.type.startsWith("audio/")) {
+      onShowToast("Please upload a valid audio file", "error");
+      return;
+    }
+
+    // Validate file size (max 500MB)
+    if (selectedFile.size > 500 * 1024 * 1024) {
+      onShowToast("Audio file is too large (max 500MB)", "error");
       return;
     }
 
@@ -85,7 +91,6 @@ const TopNavbar = ({
       await axios.post(`${API_BASE_URL}/upload-audio`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
         },
       });
 
@@ -110,9 +115,9 @@ const TopNavbar = ({
       return;
     }
 
-    // Validate file size (max 100MB)
-    if (selectedFile.size > 100 * 1024 * 1024) {
-      onShowToast("PDF file is too large (max 100MB)", "error");
+    // Validate file size (max 25MB)
+    if (selectedFile.size > 25 * 1024 * 1024) {
+      onShowToast("PDF file is too large (max 25MB)", "error");
       return;
     }
 
@@ -132,7 +137,6 @@ const TopNavbar = ({
       await axios.post(`${API_BASE_URL}/upload-pdf`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
         },
       });
 

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from auth import router as auth_router, get_current_user
 from db import notes_collection, chats_collection, saved_chats_collection, users_collection, fs
 from models import Note
@@ -10,6 +10,7 @@ from ai_formatter import format_notes
 import shutil
 import os
 import requests
+import traceback
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -32,14 +33,34 @@ def get_ist_timestamp():
     # Store ISO timestamp with +05:30 offset so clients render correct India time.
     return datetime.now(IST).isoformat()
 
-# CORS for React
+# CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://study-minutes.vercel.app", "https://www.studyminutes.tech", "https://studyminutes.tech", "https://studyminutes.duckdns.org", "https://study-minutes.onrender.com"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://study-minutes.vercel.app",
+        "https://www.studyminutes.tech",
+        "https://studyminutes.tech",
+        "https://studyminutes.duckdns.org",
+        "https://study-minutes.onrender.com",
+    ],
+    allow_origin_regex=r"https://.*(studyminutes\.tech|vercel\.app|onrender\.com)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
 
 # Include auth routes
 app.include_router(auth_router)
@@ -200,32 +221,42 @@ def root():
 # Upload note
 @app.post("/upload-note")
 async def upload_note(data: dict, user=Depends(get_current_user)):
+    raw_text = (data.get("content") or "").strip()
+    if not raw_text:
+        raise HTTPException(status_code=400, detail="Note content cannot be empty")
 
-    raw_text = data["content"]
+    try:
+        # AI formats note
+        structured_note = format_notes(raw_text)
 
-    # AI formats note
-    structured_note = format_notes(raw_text)
+        note_data = {
+            "user_id": str(user["_id"]),  
+            "email": user["email"],
+            "raw_note": raw_text,
+            "structured_note": structured_note,
+            "created_at": get_ist_timestamp()
+        }
 
-    note_data = {
-        "user_id": str(user["_id"]),  
-        "email": user["email"],
-        "raw_note": raw_text,
-        "structured_note": structured_note,
-        "created_at": get_ist_timestamp()
-    }
+        result = notes_collection.insert_one(note_data)
 
-    result = notes_collection.insert_one(note_data)
+        # Embedding storage is best-effort
+        try:
+            store_note_embeddings(
+                structured_note,
+                str(user["_id"]),
+                str(result.inserted_id)
+            )
+        except Exception as e:
+            print(f"Warning: Failed to store embeddings for note {result.inserted_id}: {e}")
 
-    store_note_embeddings(
-        structured_note,
-        str(user["_id"]),
-        str(result.inserted_id)
-    )
-
-    return {
-        "message": "Note saved with AI formatting",
-        "note": structured_note
-    }
+        return {
+            "message": "Note saved with AI formatting",
+            "note": structured_note
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving note: {str(e)}")
 
 # Get logged-in user's notes
 @app.get("/my-notes")
@@ -253,33 +284,43 @@ async def upload_audio(file: UploadFile = File(...), user=Depends(get_current_us
     try:
         # Speech -> text
         raw_text = transcribe_audio_chunks(temp_path)
+        if not raw_text or not raw_text.strip():
+            raise HTTPException(status_code=400, detail="Could not transcribe audio. The audio may be silent or unclear.")
+
+        # Text -> structured notes
+        structured_notes = format_notes(raw_text)
+
+        note_data = {
+            "user_id": str(user["_id"]),
+            "email": user["email"],
+            "raw_note": raw_text,
+            "structured_note": structured_notes,
+            "created_at": get_ist_timestamp()
+        }
+
+        result = notes_collection.insert_one(note_data)
+
+        # Embedding storage is best-effort
+        try:
+            store_note_embeddings(
+                structured_notes,
+                str(user["_id"]),
+                str(result.inserted_id)
+            )
+        except Exception as e:
+            print(f"Warning: Failed to store embeddings for audio note {result.inserted_id}: {e}")
+
+        return {
+            "message": "Audio converted successfully",
+            "note": structured_notes
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-
-    # Text -> structured notes
-    structured_notes = format_notes(raw_text)
-
-    note_data = {
-        "user_id": str(user["_id"]),
-        "email": user["email"],
-        "raw_note": raw_text,
-        "structured_note": structured_notes,
-        "created_at": get_ist_timestamp()
-    }
-
-    result = notes_collection.insert_one(note_data)
-
-    store_note_embeddings(
-        structured_notes,
-        str(user["_id"]),
-        str(result.inserted_id)
-    )
-
-    return {
-        "message": "Audio converted successfully",
-        "note": structured_notes
-    }
 
 @app.post("/upload-youtube")
 async def upload_youtube(data: dict, user=Depends(get_current_user)):
@@ -372,27 +413,45 @@ def subject_list(user=Depends(get_current_user)):
 
 @app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...), user=Depends(get_current_user)):
+    filename = file.filename or "uploaded.pdf"
+    if not filename.lower().endswith(".pdf") and file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Please upload a valid PDF file.")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp:
         shutil.copyfileobj(file.file, temp)
         temp_path = temp.name
 
     try:
-        pages = extract_pages(temp_path)
+        try:
+            pages = extract_pages(temp_path)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to read PDF: {str(e)}")
 
         if not pages:
-            return {"error": "Could not extract text from PDF"}
+            raise HTTPException(
+                status_code=400,
+                detail="Could not extract text from PDF. The PDF may be empty, image-only/scanned, or password-protected."
+            )
 
         # Combine all pages
         combined_text = " ".join(page["text"] for page in pages)
 
         # Clean text
-        combined_text = re.sub(r"\s+", " ", combined_text)
+        combined_text = re.sub(r"\s+", " ", combined_text).strip()
+
+        if not combined_text:
+            raise HTTPException(
+                status_code=400,
+                detail="No readable text found in PDF. Scanned or image-only PDFs are not supported."
+            )
 
         # Limit size (important for large PDFs)
         important_text = combined_text[:6000]
 
-        structured_notes = format_notes(important_text)
+        try:
+            structured_notes = format_notes(important_text)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"AI formatting failed: {str(e)}")
 
         note_data = {
             "user_id": str(user["_id"]),
@@ -403,20 +462,29 @@ async def upload_pdf(file: UploadFile = File(...), user=Depends(get_current_user
         }
 
         result = notes_collection.insert_one(note_data)
-        store_note_embeddings(
-            structured_notes,
-            str(user["_id"]),
-            str(result.inserted_id)
-        )
 
+        # Embedding storage is best-effort
+        try:
+            store_note_embeddings(
+                structured_notes,
+                str(user["_id"]),
+                str(result.inserted_id)
+            )
+        except Exception as e:
+            print(f"Warning: Failed to store embeddings for note {result.inserted_id}: {e}")
+
+        return {
+            "message": "PDF processed successfully",
+            "note": structured_notes
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-
-    return {
-        "message": "PDF processed successfully",
-        "note": structured_notes
-    }
 
 @app.get("/get-chats")
 def get_chats(user=Depends(get_current_user)):

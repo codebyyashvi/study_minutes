@@ -295,7 +295,6 @@ const Dashboard = () => {
       await axios.post(`${API_BASE_URL}/upload-audio`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
         },
       });
 
@@ -327,9 +326,9 @@ const Dashboard = () => {
       return;
     }
 
-    // Validate file size (max 100MB)
-    if (selectedFile.size > 100 * 1024 * 1024) {
-      showToast("PDF file is too large (max 100MB)", "error");
+    // Validate file size (max 25MB)
+    if (selectedFile.size > 25 * 1024 * 1024) {
+      showToast("PDF file is too large (max 25MB)", "error");
       return;
     }
 
@@ -343,7 +342,6 @@ const Dashboard = () => {
       await axios.post(`${API_BASE_URL}/upload-pdf`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
         },
       });
 
