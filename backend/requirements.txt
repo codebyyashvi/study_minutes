@@ -8,6 +8,7 @@ google-auth
 requests
 bcrypt
 openai
+groq
 python-multipart
 SpeechRecognition
 pydub

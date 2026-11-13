@@ -1,27 +1,45 @@
 import requests
 import uuid
+import time
 from zoneinfo import ZoneInfo
 from db import chats_collection
 from datetime import datetime
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance
-from openai import AzureOpenAI
+from groq import Groq
 from dotenv import load_dotenv
 import os
+
+env_path = os.path.join(os.path.dirname(__file__), ".env")
+load_dotenv(dotenv_path=env_path)
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API") or os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 IST = ZoneInfo("Asia/Kolkata")
 
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 COLLECTION = "user_notes"
 
-client = AzureOpenAI(
-    api_key=os.getenv("OPEN_AI_KEY"),
-    api_version="2024-02-15-preview",
-    azure_endpoint=os.getenv("OPEN_AI_ENDPOINT")
-)
+_groq_client = None
+
+def get_groq_client():
+    global _groq_client
+    if _groq_client is None:
+        api_key = os.getenv("GROQ_API") or os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("Groq API key not found. Please set GROQ_API or GROQ_API_KEY in backend/.env")
+        _groq_client = Groq(api_key=api_key)
+    return _groq_client
+
+client = None
+if GROQ_API_KEY:
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+    except Exception:
+        pass
 
 _client = None
 
@@ -47,7 +65,7 @@ def get_client():
                 raise
     return _client
 
-def get_embedding(text):
+def get_embedding(text, max_retries=3):
 
     url = "https://openrouter.ai/api/v1/embeddings"
 
@@ -56,19 +74,30 @@ def get_embedding(text):
         "Content-Type": "application/json"
     }
 
+    model = os.getenv("OPENROUTER_EMBEDDING_MODEL") or os.getenv("EMBEDDING_MODEL") or "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+
     data = {
-        "model": "nvidia/llama-nemotron-embed-vl-1b-v2:free",
+        "model": model,
         "input": text
     }
 
-    r = requests.post(url, headers=headers, json=data)
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            r = requests.post(url, headers=headers, json=data, timeout=30)
+            response = r.json()
 
-    response = r.json()
+            if "data" in response and len(response["data"]) > 0:
+                return response["data"][0]["embedding"]
 
-    if "data" not in response:
-        raise Exception(f"Embedding error: {response}")
+            last_error = response
+        except Exception as e:
+            last_error = str(e)
 
-    return response["data"][0]["embedding"]
+        if attempt < max_retries - 1:
+            time.sleep(1.5 * (attempt + 1))
+
+    raise Exception(f"Embedding error: {last_error}")
 
 
 def split_text(text, chunk_size=120):
@@ -151,7 +180,11 @@ def delete_note_embeddings(note_id):
 
 def ask_chatbot(question, user_id, chat_id):
 
-    contexts = search_notes(question, user_id)
+    try:
+        contexts = search_notes(question, user_id)
+    except Exception as e:
+        print(f"Warning: Note search failed ({e}), continuing without note context.")
+        contexts = []
 
     if not contexts:
         context = "No relevant notes found."
@@ -172,8 +205,10 @@ Answer the user's question based on their notes. Keep track of what subject or t
     message += history
     message.append({"role": "user", "content": question})
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
+    model = os.getenv("GROQ_MODEL") or GROQ_MODEL or "openai/gpt-oss-120b"
+    groq_client = get_groq_client()
+    response = groq_client.chat.completions.create(
+        model=model,
         messages=message
     )
     answer = response.choices[0].message.content
