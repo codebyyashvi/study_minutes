@@ -5,6 +5,83 @@ import axios from "axios";
 import UploadNotes from "./UploadNotes";
 import TopNavbar from "./TopNavbar";
 
+// Code block component with copy button
+const CodeBlock = ({ code, language }) => {
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  return (
+    <div className="my-2 rounded-lg overflow-hidden border border-slate-700 bg-slate-950/80">
+      <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-800 text-xs font-mono text-slate-400 flex justify-between items-center">
+        <span>{language || "code"}</span>
+        <button
+          onClick={handleCopyCode}
+          className="text-slate-400 hover:text-white flex items-center gap-1 text-[11px] transition-colors"
+          title="Copy code"
+        >
+          {copiedCode ? (
+            <>
+              <FiCheck size={12} className="text-green-400" />
+              <span className="text-green-400">Copied</span>
+            </>
+          ) : (
+            <>
+              <FiCopy size={12} />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="p-3 text-xs font-mono text-cyan-300 overflow-x-auto whitespace-pre">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+};
+
+const renderMessageContent = (content, isBot) => {
+  if (!content) return null;
+  if (!isBot) {
+    return <span className="whitespace-pre-wrap">{content}</span>;
+  }
+
+  // Split by fenced code blocks: ```[language]\n[code]```
+  const parts = content.split(/(```[\s\S]*?```)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("```") && part.endsWith("```")) {
+      const inner = part.slice(3, -3).trim();
+      const firstLineBreak = inner.indexOf("\n");
+      let language = "";
+      let code = inner;
+      if (firstLineBreak !== -1) {
+        const potentialLang = inner.slice(0, firstLineBreak).trim();
+        if (/^[a-zA-Z0-9_-]+$/.test(potentialLang)) {
+          language = potentialLang;
+          code = inner.slice(firstLineBreak + 1);
+        }
+      }
+      return <CodeBlock key={index} code={code} language={language} />;
+    }
+
+    // Normal text part: clean any residual ** or <br> from previous stored chats
+    const cleanText = part
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/\*\*/g, "");
+
+    return (
+      <span key={index} className="whitespace-pre-wrap">
+        {cleanText}
+      </span>
+    );
+  });
+};
+
 // Message component with better styling
 const Message = ({ message, isBot, onCopy }) => {
   const [copied, setCopied] = useState(false);
@@ -31,13 +108,13 @@ const Message = ({ message, isBot, onCopy }) => {
 
         {/* Message Bubble */}
         <div
-          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed break-words ${
+          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed break-words whitespace-pre-wrap ${
             isBot
               ? "bg-slate-800 border border-slate-700 text-slate-100 rounded-tl-none"
               : "bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-tr-none shadow-lg"
           }`}
         >
-          {message}
+          {renderMessageContent(message, isBot)}
         </div>
 
         {/* Copy button */}

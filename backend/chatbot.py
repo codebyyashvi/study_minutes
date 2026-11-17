@@ -1,6 +1,7 @@
 import requests
 import uuid
 import time
+import re
 from zoneinfo import ZoneInfo
 from db import chats_collection
 from datetime import datetime
@@ -178,6 +179,65 @@ def delete_note_embeddings(note_id):
         return False, str(e)
 
 
+def convert_tables_to_bullets(text: str) -> str:
+    lines = text.split('\n')
+    new_lines = []
+    in_table = False
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('|') and stripped.endswith('|'):
+            cells = [c.strip() for c in stripped.strip('|').split('|')]
+            if all(re.match(r'^:?-+:?$', c) for c in cells if c):
+                in_table = True
+                continue
+            if not in_table:
+                in_table = True
+                continue
+            else:
+                for idx in range(len(cells)):
+                    cells[idx] = re.sub(r'<br\s*/?>', '\n  ', cells[idx], flags=re.IGNORECASE)
+                if len(cells) == 2 and cells[0] and cells[1]:
+                    new_lines.append(f'• {cells[0]}: {cells[1]}')
+                elif len(cells) == 1 and cells[0]:
+                    new_lines.append(f'• {cells[0]}')
+                else:
+                    new_lines.append('• ' + ' - '.join(c for c in cells if c))
+        else:
+            in_table = False
+            new_lines.append(line)
+            
+    return '\n'.join(new_lines)
+
+
+def clean_chatbot_response(text: str) -> str:
+    if not text:
+        return ''
+    
+    # Split by fenced code blocks to protect actual code from text cleanup
+    parts = re.split(r'(```[\s\S]*?```)', text)
+    for i in range(len(parts)):
+        if i % 2 == 0:
+            # 1. Convert markdown tables to clean bullet points
+            parts[i] = convert_tables_to_bullets(parts[i])
+            # 2. Replace HTML break tags with newlines
+            parts[i] = re.sub(r'<br\s*/?>', '\n', parts[i], flags=re.IGNORECASE)
+            # 3. Strip bold markdown asterisks (**bold** -> bold)
+            parts[i] = parts[i].replace('**', '')
+            # 4. Strip single asterisk italics if not a bullet (*word* -> word)
+            parts[i] = re.sub(r'(?<!\*)\*(?!\s)([^*]+?)\*(?!\*)', r'\1', parts[i])
+            # 5. Clean Markdown headers (e.g. '### Title' -> 'Title:')
+            parts[i] = re.sub(r'^(#{1,6})\s*(.*)$', r'\2:', parts[i], flags=re.MULTILINE)
+            # 6. Remove horizontal separator rules
+            parts[i] = re.sub(r'^-{3,}$', '', parts[i], flags=re.MULTILINE)
+            # 7. Strip any remaining HTML tags
+            parts[i] = re.sub(r'</?[a-zA-Z][^>]*>', '', parts[i])
+            # 8. Collapse 3+ consecutive newlines to 2
+            parts[i] = re.sub(r'\n{3,}', '\n\n', parts[i])
+            
+    return ''.join(parts).strip()
+
+
 def ask_chatbot(question, user_id, chat_id):
 
     try:
@@ -191,14 +251,23 @@ def ask_chatbot(question, user_id, chat_id):
     else:
         context = "\n".join(contexts)
 
-    prompt = f"""You are an AI Study Assistant. You help students by answering questions about their study notes.
+    prompt = f"""You are a friendly, conversational AI Study Assistant. You help students learn by explaining concepts clearly and answering questions about their study notes.
 
-IMPORTANT: Always maintain context from the conversation history. If the user is discussing a specific topic or subject, continue referring to that same topic unless they explicitly ask about something different.
+Response Guidelines:
+1. Conversational & Human-Readable: Write like a natural tutor in a chat app. Keep paragraphs short and easy to read.
+2. NO Markdown Asterisks: Do NOT use '**' for bolding (avoid words like **TensorFlow** or **Keras**). Write plain, clean text.
+3. NO HTML Tags: Never include <br>, <p>, <div>, or any other HTML tags. Use normal blank lines for spacing.
+4. NO Markdown Tables: Never output ASCII/pipe tables (| Aspect | Meaning |). Instead, use clean bullet points (• or -) or short sentences.
+5. Code Blocks: When explaining code or writing code snippets, use clean fenced code blocks (e.g. ```python ... ```).
+6. Clear Structure: Break down complex topics into clear bullet points or short paragraphs.
+
+Conversation Context:
+Always maintain context from the conversation history. If the user is discussing a specific topic or subject, continue referring to that topic unless they change the subject.
 
 User's Study Notes:
 {context}
 
-Answer the user's question based on their notes. Keep track of what subject or topic is being discussed throughout the conversation."""
+Answer the student's question clearly, helpfully, and conversationally."""
     
     history = get_chat_history(user_id, chat_id)
     message = [{"role": "system", "content": prompt}]
@@ -211,7 +280,8 @@ Answer the user's question based on their notes. Keep track of what subject or t
         model=model,
         messages=message
     )
-    answer = response.choices[0].message.content
+    raw_answer = response.choices[0].message.content
+    answer = clean_chatbot_response(raw_answer)
     save_chat(user_id, chat_id, "user", question)
     save_chat(user_id, chat_id, "assistant", answer)
     return answer
